@@ -2,7 +2,7 @@
 // directly interacts with the database to perform 
 // CRUD operations.
 
-use crate::wrappers;
+use crate::wrappers::{self, Ohlcv};
 use bson::{Document, DateTime};
 use mongodb::Client;
 use dotenv::dotenv;
@@ -17,7 +17,7 @@ pub struct InsertOhlcv {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     id: Option<ObjectId>,
     ticker: String,
-    ohlcv: Vec<wrappers::models::Ohlcv>
+    ohlcv: Vec<wrappers::Ohlcv>
 }
 
 // pub struct MetaDataStruct {
@@ -27,15 +27,15 @@ pub struct InsertOhlcv {
 //     exchange: String
 // }
 
-pub struct InsertTimeseriesStruct {
-    datetime: DateTime,
-    open: f32,
-    high: f32,
-    low: f32,
-    close: f32,
-    volume: i64,
-    metadata: HashMap<String, String>
-}
+// pub struct InsertTimeseriesStruct {
+//     datetime: DateTime,
+//     open: f32,
+//     high: f32,
+//     low: f32,
+//     close: f32,
+//     volume: i64,
+//     metadata: HashMap<String, String>
+// }
 
 pub async fn connection() -> Client {
     dotenv().ok();
@@ -49,7 +49,7 @@ pub async fn connection() -> Client {
 }
 
 pub async fn create_data(
-    ohlcv: Vec<wrappers::models::Ohlcv>, client: &Client
+    ohlcv: Vec<wrappers::Ohlcv>, client: &Client
 ) -> Result<(), Box<dyn Error>> {
     
     // get collection
@@ -74,22 +74,33 @@ pub async fn create_data(
     Ok(())
 }
 
-pub async fn create_or_insert_timeseries(
-    dtype: &str, dformat: &str, dfreq: &str, series_metadata: Vec<String>, client: &Client, mut df: DataFrame
-) -> Result<(), Box<dyn Error>> {
-    // converting df to the desire document form
-    df.as_single_chunk();
-    let mut iters = df.columns(["datetime", "open", "high", "low", "close", "volume"])?
-        .iter().map(|s| s.iter()).collect::<Vec<_>>();
-
-
-
-    // if collection exits, insert
-
-    // if collection doesn't exist, create one
-
-    Ok(())
+pub async fn insert_many(records: Vec<Ohlcv>) {
+    let client = connection().await;
+    let documents: Vec<Document> = records
+        .iter()
+        .map(|record| {bson::to_document(record).expect("Faied to convert to Bson")})
+        .collect();
+    let my_collection: mongodb::Collection<Document> = client.database("testing").collection("mycollection");
+    let inserted_docs = my_collection.insert_many(documents, None).await;
+    println!("{:#?}", inserted_docs.unwrap())
 }
+
+// pub async fn create_or_insert_timeseries(
+//     dtype: &str, dformat: &str, dfreq: &str, series_metadata: Vec<String>, client: &Client, mut df: DataFrame
+// ) -> Result<(), Box<dyn Error>> {
+//     // converting df to the desire document form
+//     df.as_single_chunk();
+//     let mut iters = df.columns(["datetime", "open", "high", "low", "close", "volume"])?
+//         .iter().map(|s| s.iter()).collect::<Vec<_>>();
+
+
+
+//     // if collection exits, insert
+
+//     // if collection doesn't exist, create one
+
+//     Ok(())
+// }
 
 
 // pub async fn read_data(ticker: String, client: &Client) -> Result<(), Box<dyn Error>> {
