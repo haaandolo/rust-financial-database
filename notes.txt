@@ -1,0 +1,10 @@
+Collections in database is defined by:
+- Asset type: equity, fx, rates
+- Data format: options, futures, spot
+- Sampling frequency: 1 day, 1hr
+
+So example will be (equity, spot, 1day)
+
+
+- rn get ticker fundamental data
+- use unique idenifiers to populate metadata and add to timeseries database
