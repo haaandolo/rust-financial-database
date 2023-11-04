@@ -5,12 +5,10 @@
 
 use dotenv::dotenv;
 use std::env;
-use serde_json::{Value, Error, json};
 use polars::prelude::*;
-use std::io::Cursor;
 use serde::{Serialize, Deserialize};
-
-use crate::database_service;
+use chrono::{DateTime, Utc};
+use std::io::Cursor;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MetaDataStruct {
@@ -19,7 +17,7 @@ pub struct MetaDataStruct {
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Ohlcv {
-    date: String,
+    date: DateTime<Utc>,
     open: f32,
     high: f32,
     low: f32,
@@ -28,12 +26,6 @@ pub struct Ohlcv {
     volume: f32,
     metadata: Option<MetaDataStruct>
 }
-
-// impl Ohlcv {
-//     fn add_metadata_field(meta_data) -> Self {
-//         Ohlcv { date: , open: (), high: (), low: (), close: (), adjusted_close: (), volume: (), metadata: () }
-//     }
-// }
 
 pub async fn create_reqwest_client() -> reqwest::Client {
     return reqwest::Client::new();
@@ -60,7 +52,7 @@ pub async fn metadata_info() -> MetaDataStruct {
     return metadata
 }
 
-pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<(), reqwest::Error> {
+pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<Vec<Ohlcv>, reqwest::Error> {
     // get ticker metadata
     let metadata: MetaDataStruct = metadata_info().await;
 
@@ -86,26 +78,7 @@ pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, st
         ohlcv.metadata = Some(metadata.clone()); // GET RID OF THIS CLONE
     });
 
-    database_service::insert_many(response_ohlv_obj).await;
-
-    Ok(())
-}
-
-pub async fn get_ticker_fundamentals() -> Result<(), reqwest::Error> {
-    dotenv().ok();
-    // let api_token = env::var("API_TOKEN").unwrap();
-    // let param = vec![("api_token", "demo")];
-    let example = reqwest::Client::new()
-        .get(format!("https://eodhd.com/?api_token=demo"))
-        // .query(&param)
-        .send()
-        .await?
-        .text()
-        .await?;
-    let json: Result<Value, Error> = serde_json::from_str(&example);
-    println!("$$$$$$$$$$$$$$$$");
-    println!("{:#?}", json.unwrap());
-    Ok(())
+    Ok(response_ohlv_obj)
 }
 
 pub async fn get_ohlc2(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<DataFrame, reqwest::Error> {
