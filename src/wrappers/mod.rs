@@ -1,30 +1,31 @@
-// file contains functions that can be reused throughout the system
-// for example, API's provide data for multiple different asset types
-// and security types. Instead of repeating code, we can have wrapper
-// functions.
+use crate::utility_functions::string_to_datetime;
 
 use dotenv::dotenv;
-use std::env;
+use std::{env, collections::HashMap };
 use polars::prelude::*;
 use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc};
-use std::io::Cursor;
+use mongodb::bson;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct MetaDataStruct {
-    data_type: String,
-    cussip: String
-}
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Ohlcv {
-    date: DateTime<Utc>,
+    datetime: bson::DateTime,
     open: f32,
     high: f32,
     low: f32,
     close: f32,
     adjusted_close: f32,
-    volume: f32,
-    metadata: Option<MetaDataStruct>
+    volume: i32,
+    metadata: HashMap<String, String>
+}
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ApiResponse {
+    date: String,
+    open: f32,
+    high: f32,
+    low: f32,
+    close: f32,
+    adjusted_close: f32,
+    volume: i32,
 }
 
 pub async fn create_reqwest_client() -> reqwest::Client {
@@ -43,19 +44,22 @@ pub async fn format_ohlc_df(df: DataFrame) -> DataFrame {
             col("volume").cast(DataType::Int64).alias("volume"),
         ])
         .collect();
-    return df_formatted.unwrap()
-                         
+    return df_formatted.unwrap()                  
 }
 
-pub async fn metadata_info() -> MetaDataStruct {
-    let metadata: MetaDataStruct = MetaDataStruct { data_type: "stock".to_string(), cussip: "123-456-789".to_string() };
+pub async fn metadata_info() -> HashMap<String, String> {
+    let metadata = HashMap::from([
+        ("data_type".to_string(), "stock".to_string()), // GET RID OF to_string() AND CONVERT string TO &str IN OHLCV STRUCT
+        ("cussip".to_string(), "123-456-789".to_string()) // GET RID OF to_string() AND CONVERT string TO &str IN OHLCV STRUCT
+    ]);
     return metadata
 }
 
 pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<Vec<Ohlcv>, reqwest::Error> {
     // get ticker metadata
-    let metadata: MetaDataStruct = metadata_info().await;
+    let metadata: HashMap<String, String>  = metadata_info().await;
 
+    // hit api
     dotenv().ok();
     let api_token = env::var("API_TOKEN").unwrap();
     let param = vec![
@@ -73,35 +77,46 @@ pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, st
         .text()
         .await?;
 
-    let mut response_ohlv_obj: Vec<Ohlcv> = serde_json::from_str(&response_text).unwrap();
-    response_ohlv_obj.iter_mut().for_each(|ohlcv| {
-        ohlcv.metadata = Some(metadata.clone()); // GET RID OF THIS CLONE
-    });
+    // get response and formatt into dersired structure
+    let response: Vec<ApiResponse> = serde_json::from_str(&response_text).unwrap();
+    let mut response_formatted: Vec<Ohlcv> = Vec::new();
+    for ohlcv in response.iter() {
+        response_formatted.push(Ohlcv {
+            datetime: string_to_datetime(ohlcv.date.as_str()).await,
+            open: ohlcv.open,
+            high: ohlcv.high,
+            low: ohlcv.low,
+            close: ohlcv.close,
+            adjusted_close: ohlcv.adjusted_close,
+            volume: ohlcv.volume,
+            metadata: metadata.clone() // GET RID OF THIS CLONE
+        })
+    }
 
-    Ok(response_ohlv_obj)
+    Ok(response_formatted)
 }
 
-pub async fn get_ohlc2(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<DataFrame, reqwest::Error> {
-    dotenv().ok();
-    let api_token = env::var("API_TOKEN").unwrap();
-    let param = vec![
-        ("api_token", api_token),
-        ("fmt", "json".to_string()),
-        ("from", start_date.to_string()),
-        ("to", end_date.to_string())
-    ];
+// pub async fn get_ohlc2(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<DataFrame, reqwest::Error> {
+//     dotenv().ok();
+//     let api_token = env::var("API_TOKEN").unwrap();
+//     let param = vec![
+//         ("api_token", api_token),
+//         ("fmt", "json".to_string()),
+//         ("from", start_date.to_string()),
+//         ("to", end_date.to_string())
+//     ];
 
-    let response_text = client
-        .get(format!("https://eodhd.com/api/eod/{ticker}.{exchange}"))
-        .query(&param)
-        .send()
-        .await?
-        .text()
-        .await?;
+//     let response_text = client
+//         .get(format!("https://eodhd.com/api/eod/{ticker}.{exchange}"))
+//         .query(&param)
+//         .send()
+//         .await?
+//         .text()
+//         .await?;
 
-    let cursor = Cursor::new(response_text);
-    let df = JsonReader::new(cursor).finish().unwrap();
-    let df_formatted = format_ohlc_df(df).await;
+//     let cursor = Cursor::new(response_text);
+//     let df = JsonReader::new(cursor).finish().unwrap();
+//     let df_formatted = format_ohlc_df(df).await;
 
-    Ok(df_formatted)
-}
+//     Ok(df_formatted)
+// }
