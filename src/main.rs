@@ -24,3 +24,4 @@ async fn main() {
 // logger and error handling
 // create if collection doesnt exist
 // update read many filter conditions
+

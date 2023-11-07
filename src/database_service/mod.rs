@@ -6,17 +6,15 @@ use dotenv::dotenv;
 use std::env;
 use bson::doc;
 use futures::StreamExt;
+use anyhow::Result;
 
 const DATABASE_NAME: &str = "molly_db";
 
-pub async fn connection() -> Client {
+pub async fn connection() -> Result<Client>  {
     dotenv().ok();
-    let client_url = env::var("MONGODB_URI")
-        .expect("You must set the MONGODB_URI environment var!");
-    let client = Client::with_uri_str(client_url)
-        .await
-        .unwrap_or_else(|_| panic!("Error establishing MongoDB Client"));
-    println!("Established Client for MongoDB!");
+    let client_url = env::var("MONGODB_URI")?;
+    let client = Client::with_uri_str(client_url).await?;
+    println!("Established Client for MongoDB!"); // change this to log? 
     return client
 }
 
