@@ -12,10 +12,10 @@ const DATABASE_NAME: &str = "molly_db";
 
 pub async fn connection() -> Result<Client>  {
     dotenv().ok();
-    let client_url = env::var("MONGODB_URI")?;
-    let client = Client::with_uri_str(client_url).await?;
+    let client_url = env::var("MONGODB_URI").expect("Could not parse MongoDB URI");
+    let client = Client::with_uri_str(client_url).await.expect("Could not create MongoDB Client");
     println!("Established Client for MongoDB!"); // change this to log? 
-    return client
+    Ok(client)
 }
 
 pub async fn create_or_insert_many(client: &Client, records: Vec<Ohlcv>, dtype: &str, dformat: &str, dfreq: &str) {
