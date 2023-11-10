@@ -53,6 +53,7 @@ pub async fn metadata_info() -> HashMap<String, String> {
         ("data_type".to_string(), "stock".to_string()), // GET RID OF to_string() AND CONVERT string TO &str IN OHLCV STRUCT
         ("cussip".to_string(), "123-456-789".to_string()) // GET RID OF to_string() AND CONVERT string TO &str IN OHLCV STRUCT
     ]);
+    log::info!("Sucessfully retrieved metadata info");
     return metadata
 }
 
@@ -77,10 +78,13 @@ pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, st
         .await?
         .text()
         .await?;
+    log::info!("Sucessfully hit EOD OHLCV api");
 
     // get response and formatt into dersired structure
     let response: Vec<ApiResponse> = serde_json::from_str(&response_text)
         .expect("Failed to deserialize OHLCV api text response to APIResponse struct");
+    log::info!("Sucessfully parse API response to APIResponse struct");
+
     let mut response_formatted: Vec<Ohlcv> = Vec::new();
     for ohlcv in response.iter() {
         response_formatted.push(Ohlcv {
@@ -94,6 +98,8 @@ pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, st
             metadata: metadata.clone() // GET RID OF THIS CLONE
         })
     }
+
+    log::info!("Sucessfully parse APIResponse struct to Vec<Ohlcv>");
     Ok(response_formatted)
 }
 
