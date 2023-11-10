@@ -6,7 +6,8 @@ use molly_db::database_service;
 #[tokio::main]
 async fn main() {
     // connections
-    let client = database_service::connection().await.unwrap();
+    let client = database_service::connection().await.expect("Failed to establish connection to DB");
+    println!("{:#?}", client)
 
     // //GET OHLCV data
     // let eod_client = wrappers::create_reqwest_client().await;
@@ -21,7 +22,6 @@ async fn main() {
     // println!("{:#?}", records)
 }
 
-// go through file and do error handling
 // go thorugh files and add loging info
 // create if collection doesnt exist
 // update read many filter conditions

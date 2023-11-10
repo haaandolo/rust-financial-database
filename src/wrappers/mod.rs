@@ -5,6 +5,7 @@ use std::{env, collections::HashMap };
 use polars::prelude::*;
 use serde::{Serialize, Deserialize};
 use mongodb::bson;
+use anyhow::Result;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Ohlcv {
@@ -32,7 +33,7 @@ pub async fn create_reqwest_client() -> reqwest::Client {
     return reqwest::Client::new();
 }
 
-pub async fn format_ohlc_df(df: DataFrame) -> DataFrame {
+pub async fn format_ohlc_df(df: DataFrame) -> Result<DataFrame, PolarsError> {
     let df_formatted = df.lazy()
         .select([
             col("date").str().to_datetime(Some(TimeUnit::Microseconds), None, StrptimeOptions::default(), lit("raise")),
@@ -44,7 +45,7 @@ pub async fn format_ohlc_df(df: DataFrame) -> DataFrame {
             col("volume").cast(DataType::Int64).alias("volume"),
         ])
         .collect();
-    return df_formatted.unwrap()                  
+    return df_formatted
 }
 
 pub async fn metadata_info() -> HashMap<String, String> {
@@ -55,13 +56,13 @@ pub async fn metadata_info() -> HashMap<String, String> {
     return metadata
 }
 
-pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<Vec<Ohlcv>, reqwest::Error> {
+pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<Vec<Ohlcv>> {
     // get ticker metadata
     let metadata: HashMap<String, String>  = metadata_info().await;
 
     // hit api
     dotenv().ok();
-    let api_token = env::var("API_TOKEN").unwrap();
+    let api_token = env::var("API_TOKEN").expect("Failed tp parse API_TOKEN from .env");
     let param = vec![
         ("api_token", api_token),
         ("fmt", "json".to_string()),
@@ -78,7 +79,8 @@ pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, st
         .await?;
 
     // get response and formatt into dersired structure
-    let response: Vec<ApiResponse> = serde_json::from_str(&response_text).unwrap();
+    let response: Vec<ApiResponse> = serde_json::from_str(&response_text)
+        .expect("Failed to deserialize OHLCV api text response to APIResponse struct");
     let mut response_formatted: Vec<Ohlcv> = Vec::new();
     for ohlcv in response.iter() {
         response_formatted.push(Ohlcv {
@@ -92,7 +94,6 @@ pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, st
             metadata: metadata.clone() // GET RID OF THIS CLONE
         })
     }
-
     Ok(response_formatted)
 }
 
