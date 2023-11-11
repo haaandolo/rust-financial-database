@@ -15,14 +15,14 @@ async fn main() {
     //GET OHLCV data
     let eod_client = wrappers::create_reqwest_client().await;
     let ohlcv = wrappers::get_ohlc(&eod_client, "AAPL", "US", "2023-10-01", "2023-10-05").await.unwrap();
-    println!("{:#?}", &ohlcv);
+    // println!("{:#?}", &ohlcv);
 
     // INSERT_MANY records into the database
-    database_service::create_or_insert_many(&client, ohlcv, "equity", "spot", "1d").await;
+    let _ = database_service::create_or_insert_many(&client, ohlcv, "equity", "spot", "1d", database_service::OhlcGranularity::Hours).await;
 
     // READ_MANY records from the database
     let records = database_service::read_many(&client, "2023-10-04", "2023-10-05","equity", "spot", "1d").await;
-    println!("{:#?}", records)
+    // println!("{:#?}", records)
 }
 
 // create if collection doesnt exist
