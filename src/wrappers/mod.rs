@@ -50,8 +50,10 @@ pub async fn format_ohlc_df(df: DataFrame) -> Result<DataFrame, PolarsError> {
 
 pub async fn metadata_info() -> HashMap<String, String> {
     let metadata = HashMap::from([
-        ("data_type".to_string(), "stock".to_string()), // GET RID OF to_string() AND CONVERT string TO &str IN OHLCV STRUCT
-        ("cussip".to_string(), "123-456-789".to_string()) // GET RID OF to_string() AND CONVERT string TO &str IN OHLCV STRUCT
+        ("isin".to_string(), "123-456-789".to_string()), // GET RID OF to_string() AND CONVERT string TO &str IN OHLCV STRUCT
+        ("ticker".to_string(), "MDMA".to_string()), // GET RID OF to_string() AND CONVERT string TO &str IN OHLCV STRUCT
+        ("exchange".to_string(), "NASDAQ".to_string()),
+        ("source".to_string(), "eod".to_string()),
     ]);
     log::info!("Sucessfully retrieved metadata info");
     return metadata
@@ -72,7 +74,7 @@ pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, st
     ];
 
     let response_text: String = client
-        .get(format!("https://eodhd.com/api/eod/{ticker}.{exchange}"))
+        .get(format!("https://eodhd.com/api/eod/{}.{}", ticker, exchange))
         .query(&param)
         .send()
         .await?
@@ -98,7 +100,6 @@ pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, st
             metadata: metadata.clone() // GET RID OF THIS CLONE
         })
     }
-
     log::info!("Sucessfully parse APIResponse struct to Vec<Ohlcv>");
     Ok(response_formatted)
 }
