@@ -4,7 +4,7 @@ use crate::wrappers::Ohlcv;
 use mongodb::{ Client, Collection, bson, options::{CreateCollectionOptions, TimeseriesGranularity, TimeseriesOptions, FindOptions}};
 use dotenv::dotenv;
 use std::env;
-use bson::doc;
+use bson::{doc, DateTime};
 use futures::StreamExt;
 use anyhow::Result;
 
@@ -13,6 +13,17 @@ pub enum OhlcGranularity {
     Hours,
     Minutes,
     Seconds
+}
+
+pub struct TimeseriesMetaDataStruct {
+    series_type: String,
+    isin: String,
+    ticker: String,
+    source: String,
+    exchange: String,
+    series_start: DateTime,
+    series_end: DateTime,
+    last_updated: DateTime
 }
 
 /*
@@ -40,7 +51,7 @@ pub async fn ensure_collection_exists(client: &Client, dtype: &str, dformat: &st
         true => (),
         false => {
             // create collection
-            log::error!("{}", format!("Timeseries collection and sister metadata collection for {} collection does not exist", collection_name));
+            log::warn!("{}", format!("Timeseries collection and sister metadata collection for {} does not exist", collection_name));
             let timeseries_options = TimeseriesOptions::builder()
                 .time_field("datetime".to_string())
                 .meta_field(Some("metadata".to_string()))
@@ -57,12 +68,12 @@ pub async fn ensure_collection_exists(client: &Client, dtype: &str, dformat: &st
                 .build();
             db.create_collection(&collection_name, Some(options)).await
                 .expect("Failed to create timeseries collection");
-            log::info!("{}", format!("Sucessfully created timeseries collection: {}", &collection_name));
+            log::info!("Sucessfully created timeseries collection: {}", &collection_name);
 
             // create metadata collection
             db.create_collection(&metadata_collection_name, None).await
                 .expect(format!("Failed to create metadata collection for {}", &metadata_collection_name).as_str());
-            log::info!("{}", format!("Successfully created timeseries collection metadata: {}", &metadata_collection_name));
+            log::info!("Successfully created timeseries collection metadata: {}", &metadata_collection_name);
         }
     };
 }
@@ -70,23 +81,61 @@ pub async fn ensure_collection_exists(client: &Client, dtype: &str, dformat: &st
 /*
     Function creates a collection if collection doesn't exist and then inserts records
 */
+
+// MAKE THIS FUNCTION RETURN A BOOL ONCE DONE
 pub async fn insert_timeseries(client: &Client, records: Vec<Ohlcv>, dtype: &str, dformat: &str, dfreq: &str, granularity: OhlcGranularity) -> Result<()> {
     
+    let db = client.database(DATABASE_NAME);
+    let collection_name = format!("{}_{}_{}", dtype, dformat, dfreq);
+    let collection_metadata_name = format!("{}_{}_{}_meta", dtype, dformat, dfreq);
     if records.len() == 0 {
         log::error!("insert_timeseries() got a records length of zero");
         println!("{:#?}", false) // change this to return
     }
-    ensure_collection_exists(client, dtype, dformat, dfreq, granularity).await;
-    
-    let db = client.database(DATABASE_NAME);
-    let collection_name = format!("{}_{}_{}", dtype, dformat, dfreq);
 
-    // insert if collection exists
-    let my_collection: Collection<Ohlcv> = db.collection(&collection_name);
-    my_collection.insert_many(records, None)
+    ensure_collection_exists(client, dtype, dformat, dfreq, granularity).await;
+    let timeseries_start = records.get(0)
+        .expect("insert_timeseries() could not get start of series")
+        .datetime; // 2023-10-02 0:00:00.0 +00:00:00
+    let timeseries_end = records.last()
+        .expect("insert_timeseries() could not get end of series")
+        .datetime; // 2023-11-01 0:00:00.0 +00:00:00,
+
+    // create unique series identifier from the timeseries metadata
+    let mut metadata_series_filter = doc! {};
+    let _ = &records.last()
+        .expect("insert_timeseries() could not get end of series")
+        .metadata
+        .iter()
+        .map(|(key, value)| metadata_series_filter.insert(key, value));
+
+    // use unique identifier to search for metadata for corresponding series
+    let metadata_series_count = db.collection::<Collection<TimeseriesMetaDataStruct>>(&collection_metadata_name)
+        .count_documents(metadata_series_filter, None)
         .await
-        .expect(format!("Failed to insert OHLCV to {} collection", &collection_name).as_str());
-    log::info!("Successfully inserted collection");
+        .expect("insert_timeseries() errored when counting metadocument");
+
+    match metadata_series_count {
+        0 => {
+            todo!()
+        },
+        1 => {
+            todo!()
+        },
+        _ => {
+            log::error!("insert_timeseries() has more than one metadata document associated with {} with unique id", collection_name) // IMPORTANT: change unique id for something dynamic
+        }
+    }
+
+    println!("ts start: {:#?}", timeseries_start);
+    println!("ts end: {:#?}", timeseries_end);
+
+    // // insert if collection exists
+    // let my_collection: Collection<Ohlcv> = db.collection(&collection_name);
+    // my_collection.insert_many(records, None)
+    //     .await
+    //     .expect(format!("Failed to insert OHLCV to {} collection", &collection_name).as_str());
+    // log::info!("Successfully inserted collection {}", &collection_name);
     Ok(())
 }
 

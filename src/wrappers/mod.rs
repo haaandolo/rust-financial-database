@@ -7,16 +7,27 @@ use serde::{Serialize, Deserialize};
 use mongodb::bson;
 use anyhow::Result;
 
+// enum MetaDataFields {
+//     SeriesType,
+//     Isin,
+//     Ticker,
+//     Source,
+//     Exchange,
+//     TimeStart,
+//     TimeEnd,
+//     LastUpdated,
+// }
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Ohlcv {
-    datetime: bson::DateTime,
-    open: f32,
-    high: f32,
-    low: f32,
-    close: f32,
-    adjusted_close: f32,
-    volume: i32,
-    metadata: HashMap<String, String>
+    pub datetime: bson::DateTime,
+    pub open: f32,
+    pub high: f32,
+    pub low: f32,
+    pub close: f32,
+    pub adjusted_close: f32,
+    pub volume: i32,
+    pub metadata: HashMap<String, String>
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ApiResponse {
@@ -80,7 +91,7 @@ pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, st
         .await?
         .text()
         .await?;
-    log::info!("Sucessfully hit EOD OHLCV api");
+    log::info!("Sucessfully hit EOD OHLCV api for {}", &ticker);
 
     // get response and formatt into dersired structure
     let response: Vec<ApiResponse> = serde_json::from_str(&response_text)
