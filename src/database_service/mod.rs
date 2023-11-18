@@ -113,7 +113,7 @@ pub async fn insert_timeseries(client: &Client, records: Vec<Ohlcv>, dtype: &str
 
     // use unique identifier to search for metadata for corresponding series
     let metadata_series_count = db.collection::<Collection<TimeseriesMetaDataStruct>>(&collection_metadata_name)
-        .count_documents(metadata_series_filter, None)
+        .count_documents(metadata_series_filter.clone(), None) //GET RID OF CLONE
         .await
         .expect("insert_timeseries() errored when counting metadocument");
 
@@ -136,19 +136,22 @@ pub async fn insert_timeseries(client: &Client, records: Vec<Ohlcv>, dtype: &str
             db.collection(&collection_metadata_name).insert_one(timeseries_metadata, None)
                 .await
                 .expect(format!("insert_timeseries failed to insert metadata for collection {}", &collection_metadata_name).as_str());
-            log::info!("insert_timeseries() successfully inserted data and metadata info for non existing series")
            },
         1 => {
-            todo!()
+            // if meta record for collection exists then timeseries already in db
+            let timeseries_metadata = db.collection::<TimeseriesMetaDataStruct>(&collection_metadata_name)
+                .find_one(metadata_series_filter.clone(), None) // GET RID OF CLONE
+                .await
+                .expect(format!("insert_timeseries() could not unwrap Result for {}", &metadata_series_filter).as_str())
+                .expect(format!("insert_timeseries() could not unwrap Option for {}", &metadata_series_filter).as_str());
+            println!("okokok{:#?}", timeseries_metadata);
+            let timeseries_metadata_start = timeseries_metadata.time_start;
+            let timeseries_metadata_end = timeseries_metadata.time_end;
         },
         _ => {
             log::error!("insert_timeseries() has more than one metadata document associated with {} with unique id", collection_name) // IMPORTANT: change unique id for something dynamic
         }
     }
-
-    println!("ts start: {:#?}", timeseries_start);
-    println!("ts end: {:#?}", timeseries_end);
-
     // // insert if collection exists
     // let my_collection: Collection<Ohlcv> = db.collection(&collection_name);
     // my_collection.insert_many(records, None)

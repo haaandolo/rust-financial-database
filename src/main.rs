@@ -22,7 +22,7 @@ async fn main() {
 
     // READ_MANY records from the database
     let records = database_service::read_many(&client, "2023-10-04", "2023-11-01", "AAPL","equity", "spot", "1d").await;
-    println!("{:#?}", records.unwrap())
+    // println!("{:#?}", records.unwrap())
 }
 
-// do todo! sections in db service layer and test you code works
+// finish insert timeseries match statement
