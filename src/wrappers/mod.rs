@@ -1,23 +1,14 @@
 use crate::utility_functions::string_to_datetime;
 
 use dotenv::dotenv;
-use std::{env, collections::HashMap };
+use std::env;
 use polars::prelude::*;
 use serde::{Serialize, Deserialize};
 use mongodb::bson;
 use anyhow::Result;
+use struct_iterable::Iterable;
 
-// enum MetaDataFields {
-//     SeriesType,
-//     Isin,
-//     Ticker,
-//     Source,
-//     Exchange,
-//     TimeStart,
-//     TimeEnd,
-//     LastUpdated,
-// }
-
+/* --------------- REQUIRED TYPES --------------- */
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Ohlcv {
     pub datetime: bson::DateTime,
@@ -27,7 +18,7 @@ pub struct Ohlcv {
     pub close: f32,
     pub adjusted_close: f32,
     pub volume: i32,
-    pub metadata: HashMap<String, String>
+    pub metadata: OhlcvMetadata,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ApiResponse {
@@ -40,6 +31,15 @@ pub struct ApiResponse {
     volume: i32,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Iterable)]
+pub struct OhlcvMetadata {
+    pub isin: String,
+    pub ticker: String,
+    pub source: String,
+    pub exchange: String,
+}
+
+/* --------------- FUNCTIONS --------------- */
 pub async fn create_reqwest_client() -> reqwest::Client {
     return reqwest::Client::new();
 }
@@ -59,20 +59,28 @@ pub async fn format_ohlc_df(df: DataFrame) -> Result<DataFrame, PolarsError> {
     return df_formatted
 }
 
-pub async fn metadata_info() -> HashMap<String, String> {
-    let metadata = HashMap::from([
-        ("isin".to_string(), "123-456-789".to_string()), // GET RID OF to_string() AND CONVERT string TO &str IN OHLCV STRUCT
-        ("ticker".to_string(), "MDMA".to_string()), // GET RID OF to_string() AND CONVERT string TO &str IN OHLCV STRUCT
-        ("exchange".to_string(), "NASDAQ".to_string()),
-        ("source".to_string(), "eod".to_string()),
-    ]);
+pub async fn metadata_info() -> OhlcvMetadata {
+    // let metadata = HashMap::from([
+    //     ("isin".to_string(), "123-456-789".to_string()), // GET RID OF to_string() AND CONVERT string TO &str IN OHLCV STRUCT
+    //     ("ticker".to_string(), "MDMA".to_string()), // GET RID OF to_string() AND CONVERT string TO &str IN OHLCV STRUCT
+    //     ("exchange".to_string(), "NASDAQ".to_string()),
+    //     ("source".to_string(), "eod".to_string()),
+    // ]);
+    // log::info!("Sucessfully retrieved metadata info");
+    // return metadata
+    let metadata = OhlcvMetadata {
+        isin: "123-456-789".to_string(),
+        ticker: "AAPL".to_string(),
+        exchange: "NASDAQ".to_string(),
+        source: "eod".to_string(),
+    };
     log::info!("Sucessfully retrieved metadata info");
     return metadata
 }
 
 pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<Vec<Ohlcv>> {
     // get ticker metadata
-    let metadata: HashMap<String, String>  = metadata_info().await;
+    let metadata: OhlcvMetadata  = metadata_info().await;
 
     // hit api
     dotenv().ok();
@@ -114,6 +122,10 @@ pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, st
     log::info!("Sucessfully parse APIResponse struct to Vec<Ohlcv>");
     Ok(response_formatted)
 }
+
+/* --------------- TEST --------------- */
+#[cfg(test)]
+mod test { }
 
 // pub async fn get_ohlc2(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<DataFrame, reqwest::Error> {
 //     dotenv().ok();

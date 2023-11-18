@@ -7,6 +7,9 @@ use std::env;
 use bson::{doc, DateTime};
 use futures::StreamExt;
 use anyhow::Result;
+use struct_iterable::Iterable;
+use chrono::Utc;
+use serde::{Serialize, Deserialize};
 
 const DATABASE_NAME: &str = "molly_db";
 pub enum OhlcGranularity {
@@ -14,15 +17,15 @@ pub enum OhlcGranularity {
     Minutes,
     Seconds
 }
-
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TimeseriesMetaDataStruct {
     series_type: String,
     isin: String,
     ticker: String,
     source: String,
     exchange: String,
-    series_start: DateTime,
-    series_end: DateTime,
+    time_start: DateTime,
+    time_end: DateTime,
     last_updated: DateTime
 }
 
@@ -81,7 +84,6 @@ pub async fn ensure_collection_exists(client: &Client, dtype: &str, dformat: &st
 /*
     Function creates a collection if collection doesn't exist and then inserts records
 */
-
 // MAKE THIS FUNCTION RETURN A BOOL ONCE DONE
 pub async fn insert_timeseries(client: &Client, records: Vec<Ohlcv>, dtype: &str, dformat: &str, dfreq: &str, granularity: OhlcGranularity) -> Result<()> {
     
@@ -100,14 +102,14 @@ pub async fn insert_timeseries(client: &Client, records: Vec<Ohlcv>, dtype: &str
     let timeseries_end = records.last()
         .expect("insert_timeseries() could not get end of series")
         .datetime; // 2023-11-01 0:00:00.0 +00:00:00,
+    let timeseries_metadata = &records.last()
+        .expect("insert_timeseries() could not get end of series")
+        .metadata;
 
     // create unique series identifier from the timeseries metadata
     let mut metadata_series_filter = doc! {};
-    let _ = &records.last()
-        .expect("insert_timeseries() could not get end of series")
-        .metadata
-        .iter()
-        .map(|(key, value)| metadata_series_filter.insert(key, value));
+    let _ = &timeseries_metadata.iter()
+        .map(|(key, value )| metadata_series_filter.insert(key, value.downcast_ref::<&str>()));
 
     // use unique identifier to search for metadata for corresponding series
     let metadata_series_count = db.collection::<Collection<TimeseriesMetaDataStruct>>(&collection_metadata_name)
@@ -117,8 +119,25 @@ pub async fn insert_timeseries(client: &Client, records: Vec<Ohlcv>, dtype: &str
 
     match metadata_series_count {
         0 => {
-            todo!()
-        },
+            // just insert if no collection or metadata exists
+            let timeseries_metadata = TimeseriesMetaDataStruct {
+                series_type: "ticker-series".to_string(),
+                isin: timeseries_metadata.isin.clone(), // GET RID OF THE CLONES
+                ticker: timeseries_metadata.ticker.clone(), // GET RID OF THE CLONES
+                source: timeseries_metadata.source.clone(), // GET RID OF THE CLONES
+                exchange: timeseries_metadata.source.clone(), // GET RID OF THE CLONES
+                time_start: timeseries_start,
+                time_end: timeseries_end,
+                last_updated: bson::DateTime::from_chrono(Utc::now())
+            };
+            db.collection(&collection_name).insert_many(records, None)
+                .await
+                .expect(format!("Failed to insert OHLCV to {} collection", &collection_name).as_str());
+            db.collection(&collection_metadata_name).insert_one(timeseries_metadata, None)
+                .await
+                .expect(format!("insert_timeseries failed to insert metadata for collection {}", &collection_metadata_name).as_str());
+            log::info!("insert_timeseries() successfully inserted data and metadata info for non existing series")
+           },
         1 => {
             todo!()
         },
