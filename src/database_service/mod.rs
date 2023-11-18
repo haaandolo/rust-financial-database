@@ -1,7 +1,7 @@
 use crate::utility_functions::string_to_datetime;
 use crate::wrappers::Ohlcv;
 
-use mongodb::{ Client, Collection, bson, options::{CreateCollectionOptions, TimeseriesGranularity, TimeseriesOptions, FindOptions}};
+use mongodb::{ Client, Collection, bson, options::{CreateCollectionOptions, TimeseriesGranularity, TimeseriesOptions, FindOptions, UpdateOptions}};
 use dotenv::dotenv;
 use std::env;
 use bson::{doc, DateTime};
@@ -81,20 +81,27 @@ pub async fn ensure_collection_exists(client: &Client, dtype: &str, dformat: &st
     };
 }
 
+pub async fn check_continuity(record_start: & DateTime, record_end: &DateTime, new_start: & DateTime, new_end: &DateTime) -> bool {
+    if new_start <= record_end && record_start <= new_end {
+        return true
+    }
+    return false
+}
+
 /*
     Function creates a collection if collection doesn't exist and then inserts records
 */
 // MAKE THIS FUNCTION RETURN A BOOL ONCE DONE
 pub async fn insert_timeseries(client: &Client, records: Vec<Ohlcv>, dtype: &str, dformat: &str, dfreq: &str, granularity: OhlcGranularity) -> Result<()> {
-    
+    // get database and relevant names 
     let db = client.database(DATABASE_NAME);
     let collection_name = format!("{}_{}_{}", dtype, dformat, dfreq);
     let collection_metadata_name = format!("{}_{}_{}_meta", dtype, dformat, dfreq);
     if records.len() == 0 {
         log::error!("insert_timeseries() got a records length of zero");
-        println!("{:#?}", false) // change this to return
     }
 
+    // ensure collections exists
     ensure_collection_exists(client, dtype, dformat, dfreq, granularity).await;
     let timeseries_start = records.get(0)
         .expect("insert_timeseries() could not get start of series")
@@ -142,22 +149,45 @@ pub async fn insert_timeseries(client: &Client, records: Vec<Ohlcv>, dtype: &str
             let timeseries_metadata = db.collection::<TimeseriesMetaDataStruct>(&collection_metadata_name)
                 .find_one(metadata_series_filter.clone(), None) // GET RID OF CLONE
                 .await
-                .expect(format!("insert_timeseries() could not unwrap Result for {}", &metadata_series_filter).as_str())
-                .expect(format!("insert_timeseries() could not unwrap Option for {}", &metadata_series_filter).as_str());
-            println!("okokok{:#?}", timeseries_metadata);
+                .expect(format!("insert_timeseries() could not unwrap Result for {:#?}", &timeseries_metadata).as_str())
+                .expect(format!("insert_timeseries() could not unwrap Option for {:#?}", &timeseries_metadata).as_str());
             let timeseries_metadata_start = timeseries_metadata.time_start;
             let timeseries_metadata_end = timeseries_metadata.time_end;
+            let timeseries_continuity_check = check_continuity(
+                &timeseries_metadata_start, &timeseries_metadata_end, &timeseries_start, &timeseries_end
+            ).await;
+            match timeseries_continuity_check {
+                true => {
+                    // filter input record for rows that are greater than end date stated in metadata
+                    let timeseries_filtered: Vec<Ohlcv> = records
+                        .into_iter()
+                        .filter(|record| &record.datetime > &timeseries_metadata_end || &record.datetime < &timeseries_metadata_start)
+                        .collect();
+                    if timeseries_filtered.len() == 0 {
+                        log::error!("insert_timeseries() db already has timeseries data for specified date range for {:#?} ", &timeseries_metadata)
+                    }
+                    db.collection(&collection_name).insert_many(timeseries_filtered, None)
+                        .await
+                        .expect(format!("insert_timeseries() failed to insert OHLCV to {} collection. Metadata: {:#?}", &collection_name, &timeseries_metadata).as_str());
+                    let update_options = UpdateOptions::builder().upsert(false).build();
+                    db.collection::<TimeseriesMetaDataStruct>(&collection_metadata_name)
+                        .update_one(
+                        metadata_series_filter.clone(), 
+                        doc! {"$set": { "time_start": &timeseries_start,"time_end": &timeseries_end, "last_updated": bson::DateTime::from_chrono(Utc::now())}}, 
+                        Some(update_options)
+                        ) // GET RID OF CLONE
+                        .await
+                        .expect(format!("insert_timeseries() could not unwrap Result for {:#?}", &timeseries_metadata).as_str());
+                },
+                false => {
+                    log::error!("insert_timeseries() is trying to insert discontiguous timeseries for {:#?}", &timeseries_metadata)
+                }
+            }
         },
         _ => {
-            log::error!("insert_timeseries() has more than one metadata document associated with {} with unique id", collection_name) // IMPORTANT: change unique id for something dynamic
+            log::error!("insert_timeseries() has more than one metadata document associated with {:#?} with unique id", &timeseries_metadata) 
         }
     }
-    // // insert if collection exists
-    // let my_collection: Collection<Ohlcv> = db.collection(&collection_name);
-    // my_collection.insert_many(records, None)
-    //     .await
-    //     .expect(format!("Failed to insert OHLCV to {} collection", &collection_name).as_str());
-    // log::info!("Successfully inserted collection {}", &collection_name);
     Ok(())
 }
 
