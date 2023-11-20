@@ -7,9 +7,9 @@ use std::env;
 use bson::{doc, DateTime};
 use futures::StreamExt;
 use anyhow::Result;
-// use struct_iterable::Iterable;
 use chrono::Utc;
 use serde::{Serialize, Deserialize};
+use struct_iterable::Iterable;
 
 const DATABASE_NAME: &str = "molly_db";
 pub enum OhlcGranularity {
@@ -96,7 +96,7 @@ pub async fn check_continuity(record_start: & DateTime, record_end: &DateTime, n
     Function creates a collection if collection doesn't exist and then inserts records
 */
 // MAKE THIS FUNCTION RETURN A BOOL ONCE DONE
-pub async fn insert_timeseries<'a>(client: &Client, records: Vec<Ohlcv<'a>>, dtype: &str, dformat: &str, dfreq: &str, granularity: OhlcGranularity) -> Result<()> {
+pub async fn insert_timeseries(client: &Client, records: Vec<Ohlcv>, dtype: &str, dformat: &str, dfreq: &str, granularity: OhlcGranularity) -> Result<()> {
     // get database and relevant names 
     let db = client.database(DATABASE_NAME);
     let collection_name = format!("{}_{}_{}", dtype, dformat, dfreq);
@@ -116,17 +116,16 @@ pub async fn insert_timeseries<'a>(client: &Client, records: Vec<Ohlcv<'a>>, dty
     let timeseries_end = records.last()
         .expect("insert_timeseries() could not get end of series")
         .datetime; // 2023-11-01 0:00:00.0 +00:00:00,
-    let timeseries_metadata: &OhlcvMetadata<'a> = &records.last()
+    let timeseries_metadata = &records.last()
         .expect("insert_timeseries() could not get end of series")
         .metadata;
 
     // create unique series identifier from the timeseries metadata. Note, the timeseries
     // metadata field is a unique identifier. Hence, we can retrieve this and use it to 
     // find the sister metadata document associated with the series
-    let timeseries_metadata_bson = bson::to_bson(&timeseries_metadata)?;
-    let metadata_series_filter = timeseries_metadata_bson 
-        .as_document()
-        .expect("Could not covert OhlcvMetadata struct to bson document");
+    let mut metadata_series_filter = doc! {};
+    let _ = &timeseries_metadata.iter()
+        .map(|(key, value )| metadata_series_filter.insert(key, value.downcast_ref::<&str>()));
 
     // use unique identifier to search for metadata for corresponding series
     let metadata_series_count = collection_metadata
@@ -142,10 +141,10 @@ pub async fn insert_timeseries<'a>(client: &Client, records: Vec<Ohlcv<'a>>, dty
             // just insert if no collection or metadata exists
             let timeseries_metadata = TimeseriesMetaDataStruct {
                 series_type: "ticker-series".to_string(),
-                isin: timeseries_metadata.isin.to_string(), // GET RID OF THE CLONES
-                ticker: timeseries_metadata.ticker.to_string(), // GET RID OF THE CLONES
-                source: timeseries_metadata.source.to_string(), // GET RID OF THE CLONES
-                exchange: timeseries_metadata.source.to_string(), // GET RID OF THE CLONES
+                isin: timeseries_metadata.isin.to_string(),
+                ticker: timeseries_metadata.ticker.to_string(),
+                source: timeseries_metadata.source.to_string(),
+                exchange: timeseries_metadata.source.to_string(),
                 time_start: timeseries_start,
                 time_end: timeseries_end,
                 last_updated: bson::DateTime::from_chrono(Utc::now())
@@ -177,9 +176,9 @@ pub async fn insert_timeseries<'a>(client: &Client, records: Vec<Ohlcv<'a>>, dty
                         .filter(|record| &record.datetime > &timeseries_metadata_end || &record.datetime < &timeseries_metadata_start)
                         .collect();
                     if timeseries_filtered.len() == 0 {
-                        log::error!("insert_timeseries() db already has timeseries data for specified date range for {:#?} ", &timeseries_metadata)
+                        log::error!("insert_timeseries() db already has timeseries data for specified date range for {:#?} ", &timeseries_metadata);
+                        panic!("insert_timeseries() timeseries_filtered has a length of zero") // CHANGE THIS INTO SOMETHING THAT WONT CRASH PROGRAM. CURRENTLY CANT INSERT EMPTY ARRAY INTO INSERT_MANY()
                     }
-                    println!("tytytyty{:#?}", timeseries_filtered);
                     collection.insert_many(timeseries_filtered, None)
                         .await
                         .expect(format!("insert_timeseries() failed to insert OHLCV to {} collection. Metadata: {:#?}", &collection_name, &timeseries_metadata).as_str());
@@ -203,24 +202,42 @@ pub async fn insert_timeseries<'a>(client: &Client, records: Vec<Ohlcv<'a>>, dty
     Ok(())
 }
 
+
 /*
     Read in collection from DB based on filters and serialise into a dataframe
 */
-pub async fn read_many<'a>(client: &Client, start_date: &str, end_date: &str, ticker: &str, dtype: &str, dformat: &str, dfreq: &str) -> Result<Vec<Ohlcv<'a>>> {
+pub async fn read_timeseries(client: &Client, start_date: & str, end_date: & str, metadata: OhlcvMetadata, dtype: &str, dformat: &str, dfreq: &str, granularity: OhlcGranularity) -> Result<Vec<Ohlcv>> {
+    // get database info
+    ensure_collection_exists(client, dtype, dformat, dfreq, granularity).await;
     let db = client.database(DATABASE_NAME);
     let collection_name = format!("{}_{}_{}", dtype, dformat, dfreq);
-    let collections = db.list_collection_names(None).await.expect("Failed to list collection");
-    
-    // check collection exists
-    match collections.contains(&collection_name) {
-        true => {
+    let collection_metadata_name = format!("{}_{}_{}_meta", dtype, dformat, dfreq);
+    let collection = db.collection::<Ohlcv>(&collection_name);
+    let collection_metadata = db.collection::<TimeseriesMetaDataStruct>(&collection_metadata_name);
+
+    // get series metadata
+    let mut metadata_series_filter = doc!{};
+    let _ = metadata.iter()
+        .map(|(key, value)| metadata_series_filter.insert(key, value.downcast_ref::<&str>()));
+    let metadata_series_count = collection_metadata
+        .count_documents(metadata_series_filter.clone(), None)
+        .await
+        .expect("insert_timeseries() errored when counting metadocument");    
+
+    // depending on metadata_series_count, return series or return error
+    match metadata_series_count {
+        0 => {
+            log::info!("read_timeseries() got metadata_series_count of zero for {:#?}", &metadata_series_filter);
+            panic!("read_timeseries() got metadata_series_count of zero")
+        },
+        1 => {
             log::info!("Found collection: {}", collection_name);
-            let my_collection = db.collection(&collection_name);
             let start_date = string_to_datetime(start_date).await;
             let end_date = string_to_datetime(end_date).await;
+            
             let filter = doc! { 
-                "metadata.ticker": ticker, // in future make this filter condition more dynamic
-                "datetime": { 
+                "metadata": metadata_series_filter, 
+                "datetime": {
                     "$gte": start_date,
                     "$lte": end_date
                 }
@@ -228,20 +245,19 @@ pub async fn read_many<'a>(client: &Client, start_date: &str, end_date: &str, ti
             let options = FindOptions::builder()
                 .sort(doc! { "datetime": 1 })
                 .build();
-            let mut cursor = my_collection.find(filter, options)
+            let mut cursor = collection.find(filter, options)
                 .await
                 .expect("Failed to unwrap Ohlcv Cursor, check filter condition is valid");
             let mut results: Vec<Ohlcv> = Vec::new();
-            while let Some(my_collection) = cursor.next().await {
-                results.push(my_collection?)
+            while let Some(collection) = cursor.next().await {
+                results.push(collection?)
             }
             log::info!("Sucessfully read documents from DB");
             Ok(results)
         },
-        false => {
-            panic!("{} collection does not exist. Please enter correct collection name.", collection_name) // change this to recoverable error
+        _ => {
+            log::error!("{} collection does not exist. Please enter correct collection name.", collection_name);
+            panic!("read_timeseries got a metadata_series_count count greater than one") 
         }
     }
 }
-
-

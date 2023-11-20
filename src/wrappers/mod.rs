@@ -6,12 +6,11 @@ use polars::prelude::*;
 use serde::{Serialize, Deserialize};
 use mongodb::bson;
 use anyhow::Result;
-// use struct_iterable::Iterable;
+use struct_iterable::Iterable;
 
 /* --------------- REQUIRED TYPES --------------- */
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(bound(deserialize = "'de: 'a"))]
-pub struct Ohlcv<'a> {
+pub struct Ohlcv {
     pub datetime: bson::DateTime,
     pub open: f32,
     pub high: f32,
@@ -19,7 +18,7 @@ pub struct Ohlcv<'a> {
     pub close: f32,
     pub adjusted_close: f32,
     pub volume: i32,
-    pub metadata: OhlcvMetadata<'a>,
+    pub metadata: OhlcvMetadata,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ApiResponse {
@@ -32,12 +31,12 @@ pub struct ApiResponse {
     volume: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct OhlcvMetadata<'a> {
-    pub isin: &'a str,
-    pub ticker: &'a str,
-    pub source: &'a str,
-    pub exchange: &'a str,
+#[derive(Debug, Serialize, Deserialize, Clone, Iterable)]
+pub struct OhlcvMetadata {
+    pub isin: String,
+    pub ticker: String,
+    pub source: String,
+    pub exchange: String,
 }
 
 /* --------------- FUNCTIONS --------------- */
@@ -60,18 +59,18 @@ pub async fn format_ohlc_df(df: DataFrame) -> Result<DataFrame, PolarsError> {
     return df_formatted
 }
 
-pub async fn metadata_info<'a>() -> OhlcvMetadata<'a> {
+pub async fn metadata_info() -> OhlcvMetadata {
     let metadata: OhlcvMetadata = OhlcvMetadata {
-        isin: "123-456-789",
-        ticker: "AAPL",
-        exchange: "NASDAQ",
-        source: "eod",
+        isin: "123-456-789".to_string(),
+        ticker: "AAPL".to_string(),
+        exchange: "NASDAQ".to_string(),
+        source: "eod".to_string(),
     };
     log::info!("Sucessfully retrieved metadata info");
     return metadata
 }
 
-pub async fn get_ohlc<'a>(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<Vec<Ohlcv<'a>>> {
+pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<Vec<Ohlcv>> {
     // get ticker metadata
     let metadata: OhlcvMetadata  = metadata_info().await;
 
