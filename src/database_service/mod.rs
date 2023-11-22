@@ -1,8 +1,10 @@
-use crate::{utility_functions::string_to_datetime, wrappers::OhlcvMetadata};
+use crate::{utility_functions::string_to_datetime, wrappers::{OhlcvMetadata, DocumentMetaData}};
 use crate::wrappers::Ohlcv;
 
+// use chrono::format::format;
 use mongodb::{ Client, bson, options::{CreateCollectionOptions, TimeseriesGranularity, TimeseriesOptions, FindOptions, UpdateOptions}};
 use dotenv::dotenv;
+// use std::collections::HashMap;
 use std::env;
 use bson::{doc, DateTime};
 use futures::StreamExt;
@@ -30,6 +32,8 @@ pub struct TimeseriesMetaDataStruct {
     last_updated: DateTime
 }
 
+// pub struct DocumentStruct {}
+
 /*
     Establsh connection to MongoDB
 */
@@ -44,7 +48,7 @@ pub async fn connection() -> Result<Client>  {
 /*
     Ensure collection and sister metadata collection exists
 */
-pub async fn ensure_collection_exists(client: &Client, dtype: &str, dformat: &str, dfreq: &str, granularity: OhlcGranularity) {
+pub async fn ensure_timeseries_collection_exists(client: &Client, dtype: &str, dformat: &str, dfreq: &str, granularity: OhlcGranularity) {
     let db = client.database(DATABASE_NAME);
     let collection_name = format!("{}_{}_{}", dtype, dformat, dfreq);
     let metadata_collection_name = format!("{}_{}_{}_meta", dtype, dformat, dfreq);
@@ -109,7 +113,7 @@ pub async fn insert_timeseries(client: &Client, records: Vec<Ohlcv>, dtype: &str
     }
 
     // ensure collections exists. Note, these variables get used a lot, so use references
-    ensure_collection_exists(client, dtype, dformat, dfreq, granularity).await;
+    ensure_timeseries_collection_exists(client, dtype, dformat, dfreq, granularity).await;
     let timeseries_start = records.get(0)
         .expect("insert_timeseries() could not get start of series")
         .datetime; // 2023-10-02 0:00:00.0 +00:00:00
@@ -202,13 +206,32 @@ pub async fn insert_timeseries(client: &Client, records: Vec<Ohlcv>, dtype: &str
     Ok(())
 }
 
+/*
+    Function to ensure document collection exists
+ */
+pub async fn ensure_document_collection_exists(client: &Client, dtype: &str, dformat: &str, dfreq: &str) {
+    let db = client.database(DATABASE_NAME);
+    let collection_name = format!("{}_{}_{}", dtype, dformat, dfreq);
+    let collections = db.list_collection_names(None).await.expect("ensure_document_collection_exists() failed to list collection");
+
+    // create collection and metadata sister collection if it doesn't exist in DB
+    match collections.contains(&collection_name) {
+        true => (),
+        false => {
+            log::warn!("Document collection did not exist for {}", &collection_name);
+            db.create_collection(&collection_name, None).await
+                .expect(format!("ensure_document_collection_exists failed to make collection: {}", &collection_name).as_str());
+            log::info!("ensure_document_collection_exists made collection {}", &collection_name);
+        }
+    }
+}
 
 /*
     Read in collection from DB based on filters and serialise into a dataframe
 */
 pub async fn read_timeseries(client: &Client, start_date: & str, end_date: & str, metadata: OhlcvMetadata, dtype: &str, dformat: &str, dfreq: &str, granularity: OhlcGranularity) -> Result<Vec<Ohlcv>> {
     // get database info
-    ensure_collection_exists(client, dtype, dformat, dfreq, granularity).await;
+    ensure_timeseries_collection_exists(client, dtype, dformat, dfreq, granularity).await;
     let db = client.database(DATABASE_NAME);
     let collection_name = format!("{}_{}_{}", dtype, dformat, dfreq);
     let collection_metadata_name = format!("{}_{}_{}_meta", dtype, dformat, dfreq);
@@ -234,7 +257,6 @@ pub async fn read_timeseries(client: &Client, start_date: & str, end_date: & str
             log::info!("Found collection: {}", collection_name);
             let start_date = string_to_datetime(start_date).await;
             let end_date = string_to_datetime(end_date).await;
-            
             let filter = doc! { 
                 "metadata": metadata_series_filter, 
                 "datetime": {
@@ -256,8 +278,38 @@ pub async fn read_timeseries(client: &Client, start_date: & str, end_date: & str
             Ok(results)
         },
         _ => {
-            log::error!("{} collection does not exist. Please enter correct collection name.", collection_name);
+            log::error!("Got a collection greater than one for: {}", &metadata_series_filter);
             panic!("read_timeseries got a metadata_series_count count greater than one") 
+        }
+    }
+}
+
+/*
+    Function to insert documents, this is for non timeseries based data i.e. financial statements
+*/
+pub async fn insert_document<T>(client: &Client, dtype: &str, dformat: &str, dfreq: &str, document_data: Vec<T>, metadata: DocumentMetaData) {
+    ensure_document_collection_exists(client, dtype, dformat, dfreq).await;
+    let db = client.database(DATABASE_NAME);
+    let collection_name = format!("{}_{}_{}", dtype, dformat, dfreq);
+    let collection = db.collection::<T>(&collection_name);
+
+    let mut document_filter = doc! {};
+    let _ = &metadata.iter()
+        .map(|(key, value )|document_filter.insert(key, value.downcast_ref::<&str>()));
+
+    // use unique identifier to search for metadata for corresponding series
+    let document_count = collection
+        .count_documents(document_filter.clone(), None)
+        .await
+        .expect("insert_timeseries() errored when counting metadocument");
+
+    match document_count {
+        0 => {
+            
+        },
+        1 => {},
+        _ => {
+            log::error!("Got a document count of greater than one for: {:#?}", &collection_name)
         }
     }
 }

@@ -27,4 +27,6 @@ async fn main() {
     // println!("{:#?}", records.unwrap())
 }
 
-// write funtionaity to insert doc and read doc
+// finishh insert_doc() function and test it 
+// start read_doc() function
+// change String -> some smart pointer

@@ -39,6 +39,13 @@ pub struct OhlcvMetadata {
     pub exchange: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Iterable)]
+pub struct DocumentMetaData {
+    pub isin: String,
+    pub ticker: String,
+    pub source: String,
+    pub exchange: String,
+}
 /* --------------- FUNCTIONS --------------- */
 pub async fn create_reqwest_client() -> reqwest::Client {
     return reqwest::Client::new();
