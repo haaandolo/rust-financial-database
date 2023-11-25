@@ -67,12 +67,7 @@ pub async fn format_ohlc_df(df: DataFrame) -> Result<DataFrame, PolarsError> {
     return df_formatted
 }
 
-pub async fn metadata_info(client: &reqwest::Client, ticker: &str, exchange: &str) -> Result<OhlcvMetadata> {
-    let metadata_general = get_ticker_generals(client, ticker, exchange)
-        .await
-        .expect("metadata_info() could not get failed at get_ticker_general() function");
-
-    println!("{:#?}", metadata_general.column("Exchange")?.get(0)?.to_string().trim_matches('"'));
+pub async fn metadata_info() -> Result<OhlcvMetadata> {
     let metadata: OhlcvMetadata = OhlcvMetadata {
         isin: "123-456-789".to_string(),
         ticker: "AAPL".to_string(),
@@ -85,7 +80,7 @@ pub async fn metadata_info(client: &reqwest::Client, ticker: &str, exchange: &st
 
 pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<Vec<Ohlcv>> {
     // get ticker metadata
-    let metadata: OhlcvMetadata  = metadata_info(client, ticker, exchange).await
+    let metadata: OhlcvMetadata  = metadata_info().await
         .expect("get_ohlv() failed to get metadata_info()");
 
     // hit api
@@ -152,7 +147,7 @@ pub async fn get_ticker_generals(client: &reqwest::Client, ticker: &str, exchang
 
     let cursor = Cursor::new(&response_text);
     let df = JsonReader::new(cursor).finish().unwrap();
-
+    println!("{:?}", &df);
     // println!("{:#?}", df.column("Exchange")?.get(0)?.to_string().trim_matches('"'));
     Ok(df)
 }
@@ -184,4 +179,20 @@ mod test { }
 //     let df_formatted = format_ohlc_df(df).await;
 
 //     Ok(df_formatted)
+// }
+
+// pub async fn metadata_info(client: &reqwest::Client, ticker: &str, exchange: &str) -> Result<OhlcvMetadata> {
+//     let metadata_general = get_ticker_generals(client, ticker, exchange)
+//         .await
+//         .expect("metadata_info() could not get metadata info. failed at get_ticker_general() function");
+
+//     println!("{:#?}", metadata_general.column("Exchange")?.get(0)?.to_string().trim_matches('"'));
+//     let metadata: OhlcvMetadata = OhlcvMetadata {
+//         isin: "123-456-789".to_string(),
+//         ticker: "AAPL".to_string(),
+//         exchange: "NASDAQ".to_string(),
+//         source: "eod".to_string(),
+//     };
+//     log::info!("Sucessfully retrieved metadata info");
+//     Ok(metadata)
 // }
