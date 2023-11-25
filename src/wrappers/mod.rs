@@ -2,11 +2,12 @@ use crate::utility_functions::string_to_datetime;
 
 use dotenv::dotenv;
 use std::env;
-use polars::prelude::*;
+use polars::prelude::{JsonReader, DataFrame, PolarsError, DataType, TimeUnit, col, IntoLazy, StrptimeOptions, lit, SerReader};
 use serde::{Serialize, Deserialize};
 use mongodb::bson;
 use anyhow::Result;
 use struct_iterable::Iterable;
+use std::io::Cursor;
 
 /* --------------- REQUIRED TYPES --------------- */
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -66,7 +67,12 @@ pub async fn format_ohlc_df(df: DataFrame) -> Result<DataFrame, PolarsError> {
     return df_formatted
 }
 
-pub async fn metadata_info() -> OhlcvMetadata {
+pub async fn metadata_info(client: &reqwest::Client, ticker: &str, exchange: &str) -> Result<OhlcvMetadata> {
+    let metadata_general = get_ticker_generals(client, ticker, exchange)
+        .await
+        .expect("metadata_info() could not get failed at get_ticker_general() function");
+
+    println!("{:#?}", metadata_general.column("Exchange")?.get(0)?.to_string().trim_matches('"'));
     let metadata: OhlcvMetadata = OhlcvMetadata {
         isin: "123-456-789".to_string(),
         ticker: "AAPL".to_string(),
@@ -74,12 +80,13 @@ pub async fn metadata_info() -> OhlcvMetadata {
         source: "eod".to_string(),
     };
     log::info!("Sucessfully retrieved metadata info");
-    return metadata
+    Ok(metadata)
 }
 
 pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, start_date: &str, end_date: &str) -> Result<Vec<Ohlcv>> {
     // get ticker metadata
-    let metadata: OhlcvMetadata  = metadata_info().await;
+    let metadata: OhlcvMetadata  = metadata_info(client, ticker, exchange).await
+        .expect("get_ohlv() failed to get metadata_info()");
 
     // hit api
     dotenv().ok();
@@ -120,6 +127,34 @@ pub async fn get_ohlc(client: &reqwest::Client, ticker: &str, exchange: &str, st
     }
     log::info!("Sucessfully parse APIResponse struct to Vec<Ohlcv>");
     Ok(response_formatted)
+}
+
+/*
+    Get fundamental data
+*/
+pub async fn get_ticker_generals(client: &reqwest::Client, ticker: &str, exchange: &str) -> Result<DataFrame> {
+    // hit api
+    dotenv().ok();
+    let api_token = env::var("API_TOKEN").expect("Failed tp parse API_TOKEN from .env");
+    let param = vec![
+        ("api_token", api_token),
+        ("fmt", "json".to_string()),
+        ("filter", "General".to_string())
+    ];
+
+    let response_text: String = client
+        .get(format!("https://eodhd.com/api/fundamentals/{}.{}", ticker, exchange))
+        .query(&param)
+        .send()
+        .await?
+        .text()
+        .await?;
+
+    let cursor = Cursor::new(&response_text);
+    let df = JsonReader::new(cursor).finish().unwrap();
+
+    // println!("{:#?}", df.column("Exchange")?.get(0)?.to_string().trim_matches('"'));
+    Ok(df)
 }
 
 /* --------------- TEST --------------- */

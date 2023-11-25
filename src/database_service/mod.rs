@@ -6,7 +6,7 @@ use mongodb::{ Client, bson, options::{CreateCollectionOptions, TimeseriesGranul
 use dotenv::dotenv;
 // use std::collections::HashMap;
 use std::env;
-use bson::{doc, DateTime};
+use bson::{doc, DateTime, Document};
 use futures::StreamExt;
 use anyhow::Result;
 use chrono::Utc;
@@ -287,12 +287,14 @@ pub async fn read_timeseries(client: &Client, start_date: & str, end_date: & str
 /*
     Function to insert documents, this is for non timeseries based data i.e. financial statements
 */
-pub async fn insert_document<T>(client: &Client, dtype: &str, dformat: &str, dfreq: &str, document_data: Vec<T>, metadata: DocumentMetaData) {
+pub async fn insert_document<T>(client: &Client, dtype: &str, dformat: &str, dfreq: &str, document_data: Vec<String>, metadata: DocumentMetaData) -> Result<()> {
     ensure_document_collection_exists(client, dtype, dformat, dfreq).await;
     let db = client.database(DATABASE_NAME);
     let collection_name = format!("{}_{}_{}", dtype, dformat, dfreq);
-    let collection = db.collection::<T>(&collection_name);
+    let collection = db.collection::<Document>(&collection_name);
 
+    // get filter data filter condition. Note, this is the same as the metadata field
+    // when inserting documents
     let mut document_filter = doc! {};
     let _ = &metadata.iter()
         .map(|(key, value )|document_filter.insert(key, value.downcast_ref::<&str>()));
@@ -302,14 +304,37 @@ pub async fn insert_document<T>(client: &Client, dtype: &str, dformat: &str, dfr
         .count_documents(document_filter.clone(), None)
         .await
         .expect("insert_timeseries() errored when counting metadocument");
+    
+    // serialise document data to bson object
+    let document_serialised = bson::to_bson(&document_data)
+        .expect(format!("insert_document() could not serialise document data for {:?}", &document_filter).as_str());
+    let document_bson = document_serialised.as_document()
+        .expect(format!("insert_document() could not convert {:?} to document", &document_filter).as_str()); // CHANGE TO {:#?} ?
+    let document_record = doc! {
+        "metadata": &document_filter,
+        "data": document_bson,
+        "last_updated": bson::DateTime::from_chrono(Utc::now()),
+    };
 
     match document_count {
         0 => {
-            
+            collection.insert_one(document_record, None).await
+                .expect(format!("insert_document() failed to insert document for {:?}", &document_filter).as_str()); // CHANGE TO {:#?} ?
+            log::info!("Successfully insert document {:?}", &document_filter)
         },
-        1 => {},
+        1 => {
+            let update_options = UpdateOptions::builder().upsert(false).build();
+            collection.update_one(
+                document_filter.clone(),
+                doc! {"$set": { "data": document_record, "last_updated": bson::DateTime::from_chrono(Utc::now())}},
+                Some(update_options))
+            .await
+            .expect(format!("insert_document() could not update document {:?}", &document_filter).as_str()); // CHANGE TO {:#?}
+            log::info!("Sucessfully updated document {:?}", &document_filter)
+        },
         _ => {
             log::error!("Got a document count of greater than one for: {:#?}", &collection_name)
         }
     }
+    Ok(())
 }
