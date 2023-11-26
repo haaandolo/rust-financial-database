@@ -47,9 +47,9 @@ impl EodWrappperFunctions {
         Ok(response_hashmap)
     }
 
-    async fn get_metadata_info() {
-        todo!()
-    }
+    // async fn get_metadata_info() {
+    //     todo!()
+    // }
 }
 
 
