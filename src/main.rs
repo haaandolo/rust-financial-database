@@ -1,12 +1,16 @@
 // use molly_db::database_service;
-use molly_db::wrappers::EodWrappperFunctions;
+use molly_db::securities::Equities;
 
 #[tokio::main]
 async fn main() {
-   let thing = EodWrappperFunctions::new().await;
-   let thing2 = thing.get_ticker_general("AAPL", "US").await;
+   let thing = Equities::new().await;
+   let thing2 = thing.get_series_metadata("AAPL", "US").await;
    println!("{:?}", thing2.unwrap()) 
 }
+
+// read batch get_series() api in pdf
+// implement wrapper trait of batch get ohlcv and get intraday data
+
 
 // use molly_db::database_service;
 // use molly_db::wrappers;
