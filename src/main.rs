@@ -1,16 +1,19 @@
 // use molly_db::database_service;
 use molly_db::securities::Equities;
+use molly_db::wrappers::WrapperFunctions;
 
 #[tokio::main]
 async fn main() {
    let thing = Equities::new().await;
    let thing2 = thing.get_series_metadata("AAPL", "US").await;
-   println!("{:?}", thing2.unwrap()) 
+   println!("{:?}", thing2.unwrap());
+
+   let wrapper_client = WrapperFunctions::new().await;
+   let wrapper_test = wrapper_client.batch_get_ohlcv("AAPL", "US", "2023-10-01", "2023-11-01").await;
+   println!("{:?}", wrapper_test.unwrap());
 }
 
-// read batch get_series() api in pdf
-// implement wrapper trait of batch get ohlcv and get intraday data
-
+// finish batch_get_ohlcv() and parallel_http_request() 
 
 // use molly_db::database_service;
 // use molly_db::wrappers;

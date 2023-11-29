@@ -1,22 +1,14 @@
 use anyhow::Result;
 use dotenv::dotenv;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, env};
-use struct_iterable::Iterable;
+use reqwest::Client; 
+
+use crate::models::OhlcvMetadata;
 
 pub struct Equities {
-    client: reqwest::Client,
+    client: Client,
     api_token: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Iterable)]
-pub struct OhlcvMetadata {
-    pub data_type: String,
-    pub isin: String,
-    pub ticker: String,
-    pub source: String,
-    pub exchange: String,
 }
 
 impl Equities {
@@ -24,7 +16,7 @@ impl Equities {
         dotenv().ok();
         let eod_api_token = env::var("API_TOKEN").expect("Failed tp parse API_TOKEN from .env");
         Self {
-            client: reqwest::Client::new(),
+            client: Client::new(),
             api_token: eod_api_token,
         }
     }

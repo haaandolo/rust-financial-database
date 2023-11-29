@@ -1,4 +1,110 @@
+use anyhow::Result;
+use dotenv::dotenv;
+use futures::{ stream, StreamExt};
+use reqwest::Client;
+use std::env;
+use tokio;
 
+use crate::models::{ApiResponse, Ohlcv};
+use crate::securities::Equities;
+use crate::utility_functions::string_to_datetime;
+
+pub struct WrapperFunctions {
+    client: Client,
+    api_token: String,
+}
+
+impl WrapperFunctions {
+    const PARALLEL_REQUESTS: usize = 2;
+
+    pub async fn new() -> Self {
+        dotenv().ok();
+        let eod_api_token = env::var("API_TOKEN").expect("Failed tp parse API_TOKEN from .env");
+        Self {
+            client: Client::new(),
+            api_token: eod_api_token,
+        }
+    }
+
+    pub async fn parallel_http_request(&self, urls: Vec<String>) -> Result<()> {
+        let bodies = stream::iter(urls)
+            .map(|url| {
+                let client = self.client.clone();
+                tokio::spawn(async move {
+                    let response = client.get(url).send().await?;
+                    response.bytes().await
+                })
+            })
+            .buffer_unordered(Self::PARALLEL_REQUESTS);
+
+        bodies
+            .for_each(|body| async {
+                match body {
+                    Ok(Ok(body)) => println!("OKOKOKOK {:?}", body),
+                    Ok(Err(e)) => eprintln!("Got a reqwest::Error: {}", e),
+                    Err(e) => eprintln!("Got a tokio::JoinError {}", e),
+                }
+            })
+            .await;
+        Ok(())
+    }
+
+    pub async fn batch_get_ohlcv(
+        &self,
+        ticker: &str,
+        exchange: &str,
+        start_date: &str,
+        end_date: &str,
+    ) -> Result<()> {
+        let equities_client = Equities::new().await;
+        let metadata = equities_client
+            .get_series_metadata(ticker, exchange)
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "batch_get_ohlcv() failed on get_series_metadata() for {:?}",
+                    ticker
+                )
+            });
+
+        let param = vec![
+            ("api_token", self.api_token.clone()), // GET RID OF THIS CLONE 
+            ("fmt", "json".to_string()),
+            ("from", start_date.to_string()),
+            ("to", end_date.to_string()),
+        ];
+
+        let response_text: String = self
+            .client
+            .get(format!("https://eodhd.com/api/eod/{}.{}", ticker, exchange))
+            .query(&param)
+            .send()
+            .await?
+            .text()
+            .await?;
+
+        let response: Vec<ApiResponse> = serde_json::from_str(&response_text)
+            .expect("Failed to deserialize OHLCV api text response to APIResponse struct");
+
+        let mut response_formatted: Vec<Ohlcv> = Vec::new();
+        for ohlcv in response.iter() {
+            response_formatted.push(Ohlcv {
+                datetime: string_to_datetime(ohlcv.date.as_str()).await,
+                open: ohlcv.open,
+                high: ohlcv.high,
+                low: ohlcv.low,
+                close: ohlcv.close,
+                adjusted_close: ohlcv.adjusted_close,
+                volume: ohlcv.volume,
+                metadata: metadata.clone(), // GET RID OF THIS CLONE
+            })
+        }
+        
+        println!("{:#?}", response_formatted);
+
+        Ok(())
+    }
+}
 // use crate::utility_functions::string_to_datetime;
 
 // use dotenv::dotenv;
@@ -11,17 +117,6 @@
 // use std::io::Cursor;
 
 // /* --------------- REQUIRED TYPES --------------- */
-// #[derive(Debug, Serialize, Deserialize, Clone)]
-// pub struct Ohlcv {
-//     pub datetime: bson::DateTime,
-//     pub open: f32,
-//     pub high: f32,
-//     pub low: f32,
-//     pub close: f32,
-//     pub adjusted_close: f32,
-//     pub volume: i32,
-//     pub metadata: OhlcvMetadata,
-// }
 // #[derive(Debug, Serialize, Deserialize, Clone)]
 // pub struct ApiResponse {
 //     date: String,
