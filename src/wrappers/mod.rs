@@ -1,13 +1,13 @@
 use anyhow::Result;
 use dotenv::dotenv;
-use futures::{ stream, StreamExt};
+use futures::{stream, StreamExt};
 use reqwest::Client;
 use std::env;
 use tokio;
 
-use crate::models::{ApiResponse, Ohlcv};
-use crate::securities::Equities;
-use crate::utility_functions::string_to_datetime;
+// use crate::models::{ApiResponse, Ohlcv};
+// use crate::securities::Equities;
+// use crate::utility_functions::string_to_datetime;
 
 pub struct WrapperFunctions {
     client: Client,
@@ -51,56 +51,72 @@ impl WrapperFunctions {
 
     pub async fn batch_get_ohlcv(
         &self,
-        ticker: &str,
-        exchange: &str,
+        ticker: Vec<&str>,
+        exchange: Vec<&str>,
         start_date: &str,
         end_date: &str,
     ) -> Result<()> {
-        let equities_client = Equities::new().await;
-        let metadata = equities_client
-            .get_series_metadata(ticker, exchange)
-            .await
-            .unwrap_or_else(|_| {
-                panic!(
-                    "batch_get_ohlcv() failed on get_series_metadata() for {:?}",
-                    ticker
-                )
-            });
+
+        // let equities_client = Equities::new().await;
+        // let metadata = equities_client
+        //     .get_series_metadata(ticker, exchange)
+        //     .await
+        //     .unwrap_or_else(|_| {
+        //         panic!(
+        //             "batch_get_ohlcv() failed on get_series_metadata() for {:?}",
+        //             ticker
+        //         )
+        //     });
 
         let param = vec![
-            ("api_token", self.api_token.clone()), // GET RID OF THIS CLONE 
+            ("api_token", self.api_token.clone()), // GET RID OF THIS CLONE
             ("fmt", "json".to_string()),
             ("from", start_date.to_string()),
             ("to", end_date.to_string()),
         ];
 
-        let response_text: String = self
-            .client
-            .get(format!("https://eodhd.com/api/eod/{}.{}", ticker, exchange))
-            .query(&param)
-            .send()
-            .await?
-            .text()
-            .await?;
+        let param_string = param
+            .iter()
+            .map(|(key, value)| format!("{}={}", key, value))
+            .collect::<Vec<String>>()
+            .join("&");
 
-        let response: Vec<ApiResponse> = serde_json::from_str(&response_text)
-            .expect("Failed to deserialize OHLCV api text response to APIResponse struct");
+        // let results: Vec<String> = Vec::new();
 
-        let mut response_formatted: Vec<Ohlcv> = Vec::new();
-        for ohlcv in response.iter() {
-            response_formatted.push(Ohlcv {
-                datetime: string_to_datetime(ohlcv.date.as_str()).await,
-                open: ohlcv.open,
-                high: ohlcv.high,
-                low: ohlcv.low,
-                close: ohlcv.close,
-                adjusted_close: ohlcv.adjusted_close,
-                volume: ohlcv.volume,
-                metadata: metadata.clone(), // GET RID OF THIS CLONE
-            })
+        let zipped = ticker.iter().zip(exchange.iter()).collect::<Vec<_>>();
+
+        for (sub_ticker, sub_exchange) in zipped {
+            let url = format!("https://eodhd.com/api/eod/{}.{}{}", sub_ticker, sub_exchange, param_string);
+            println!("{}", url)
         }
-        
-        println!("{:#?}", response_formatted);
+
+        // let response_text: String = self
+        //     .client
+        //     .get(format!("https://eodhd.com/api/eod/{}.{}", ticker, exchange))
+        //     .query(&param)
+        //     .send()
+        //     .await?
+        //     .text()
+        //     .await?;
+
+        // let response: Vec<ApiResponse> = serde_json::from_str(&response_text)
+        //     .expect("Failed to deserialize OHLCV api text response to APIResponse struct");
+
+        // let mut response_formatted: Vec<Ohlcv> = Vec::new();
+        // for ohlcv in response.iter() {
+        //     response_formatted.push(Ohlcv {
+        //         datetime: string_to_datetime(ohlcv.date.as_str()).await,
+        //         open: ohlcv.open,
+        //         high: ohlcv.high,
+        //         low: ohlcv.low,
+        //         close: ohlcv.close,
+        //         adjusted_close: ohlcv.adjusted_close,
+        //         volume: ohlcv.volume,
+        //         metadata: metadata.clone(), // GET RID OF THIS CLONE
+        //     })
+        // }
+
+        // println!("{:#?}", response_formatted);
 
         Ok(())
     }
