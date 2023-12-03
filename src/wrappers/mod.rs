@@ -1,11 +1,10 @@
 use anyhow::Result;
 use dotenv::dotenv;
-use futures::{stream, StreamExt};
+use futures::future;
 use reqwest::Client;
 use std::env;
-use tokio;
 
-// use crate::models::{ApiResponse, Ohlcv};
+use crate::models::ApiResponse;
 // use crate::securities::Equities;
 // use crate::utility_functions::string_to_datetime;
 
@@ -15,8 +14,6 @@ pub struct WrapperFunctions {
 }
 
 impl WrapperFunctions {
-    const PARALLEL_REQUESTS: usize = 2;
-
     pub async fn new() -> Self {
         dotenv().ok();
         let eod_api_token = env::var("API_TOKEN").expect("Failed tp parse API_TOKEN from .env");
@@ -26,48 +23,41 @@ impl WrapperFunctions {
         }
     }
 
-    pub async fn parallel_http_request(&self, urls: Vec<String>) -> Result<()> {
-        let bodies = stream::iter(urls)
-            .map(|url| {
-                let client = self.client.clone();
-                tokio::spawn(async move {
-                    let response = client.get(url).send().await?;
-                    response.bytes().await
-                })
-            })
-            .buffer_unordered(Self::PARALLEL_REQUESTS);
+    pub async fn async_http_request(&self, urls: Vec<String>) -> Result<Vec<Vec<ApiResponse>>>{
+        let bodies = future::join_all(urls.into_iter().map(|url| {
+            let client = self.client.clone();
+            async move {
+                let resp = client.get(url).send().await?;
+                resp.bytes().await
+            }
+        }))
+        .await;
 
-        bodies
-            .for_each(|body| async {
-                match body {
-                    Ok(Ok(body)) => println!("OKOKOKOK {:?}", body),
-                    Ok(Err(e)) => eprintln!("Got a reqwest::Error: {}", e),
-                    Err(e) => eprintln!("Got a tokio::JoinError {}", e),
+        let mut response_vec = Vec::new();
+        for body in bodies {
+            match body {
+                Ok(body) => {
+                    let body_string = String::from_utf8_lossy(&body);
+                    let body_ohlcv: Vec<ApiResponse> = serde_json::from_str(&body_string)
+                        .unwrap_or_else(|_| {
+                            panic!("async_http_request() failed to deserialize ohlcv api text response to apiresponse struct for"); // EDIT THIS
+                        });
+                    response_vec.push(body_ohlcv);
                 }
-            })
-            .await;
-        Ok(())
+                Err(e) => eprintln!("Got an error: {}", e),
+            }
+        }
+
+        Ok(response_vec)
     }
 
     pub async fn batch_get_ohlcv(
         &self,
-        ticker: Vec<&str>,
-        exchange: Vec<&str>,
+        tickers: Vec<&str>,
+        exchanges: Vec<&str>,
         start_date: &str,
         end_date: &str,
-    ) -> Result<()> {
-
-        // let equities_client = Equities::new().await;
-        // let metadata = equities_client
-        //     .get_series_metadata(ticker, exchange)
-        //     .await
-        //     .unwrap_or_else(|_| {
-        //         panic!(
-        //             "batch_get_ohlcv() failed on get_series_metadata() for {:?}",
-        //             ticker
-        //         )
-        //     });
-
+    ) -> Result<Vec<Vec<ApiResponse>>> {
         let param = vec![
             ("api_token", self.api_token.clone()), // GET RID OF THIS CLONE
             ("fmt", "json".to_string()),
@@ -75,50 +65,25 @@ impl WrapperFunctions {
             ("to", end_date.to_string()),
         ];
 
-        let param_string = param
-            .iter()
-            .map(|(key, value)| format!("{}={}", key, value))
-            .collect::<Vec<String>>()
-            .join("&");
-
-        // let results: Vec<String> = Vec::new();
-
-        let zipped = ticker.iter().zip(exchange.iter()).collect::<Vec<_>>();
-
-        for (sub_ticker, sub_exchange) in zipped {
-            let url = format!("https://eodhd.com/api/eod/{}.{}{}", sub_ticker, sub_exchange, param_string);
-            println!("{}", url)
+        let mut urls = Vec::new();
+        for (ticker, exchange) in tickers.iter().zip(exchanges.iter()) {
+            let url = format!("https://eodhd.com/api/eod/{}.{}?", ticker, exchange);
+            let full_url = format!(
+                "{}{}",
+                url,
+                form_urlencoded::Serializer::new(String::new())
+                    .extend_pairs(param.iter())
+                    .finish()
+            );
+            urls.push(full_url);
         }
 
-        // let response_text: String = self
-        //     .client
-        //     .get(format!("https://eodhd.com/api/eod/{}.{}", ticker, exchange))
-        //     .query(&param)
-        //     .send()
-        //     .await?
-        //     .text()
-        //     .await?;
+        let response_vec_api = self
+            .async_http_request(urls)
+            .await
+            .expect("batch_get_ohlcv() failed to unwrap response_vec_api");
 
-        // let response: Vec<ApiResponse> = serde_json::from_str(&response_text)
-        //     .expect("Failed to deserialize OHLCV api text response to APIResponse struct");
-
-        // let mut response_formatted: Vec<Ohlcv> = Vec::new();
-        // for ohlcv in response.iter() {
-        //     response_formatted.push(Ohlcv {
-        //         datetime: string_to_datetime(ohlcv.date.as_str()).await,
-        //         open: ohlcv.open,
-        //         high: ohlcv.high,
-        //         low: ohlcv.low,
-        //         close: ohlcv.close,
-        //         adjusted_close: ohlcv.adjusted_close,
-        //         volume: ohlcv.volume,
-        //         metadata: metadata.clone(), // GET RID OF THIS CLONE
-        //     })
-        // }
-
-        // println!("{:#?}", response_formatted);
-
-        Ok(())
+        Ok(response_vec_api)
     }
 }
 // use crate::utility_functions::string_to_datetime;
@@ -215,8 +180,8 @@ impl WrapperFunctions {
 //     log::info!("Sucessfully hit EOD OHLCV api for {}", &ticker);
 
 //     // get response and formatt into dersired structure
-//     let response: Vec<ApiResponse> = serde_json::from_str(&response_text)
-//         .expect("Failed to deserialize OHLCV api text response to APIResponse struct");
+//     let response: vec<apiresponse> = serde_json::from_str(&response_text)
+//         .expect("failed to deserialize ohlcv api text response to apiresponse struct");
 //     log::info!("Sucessfully parse API response to APIResponse struct");
 
 //     let mut response_formatted: Vec<Ohlcv> = Vec::new();

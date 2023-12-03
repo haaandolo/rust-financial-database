@@ -57,7 +57,7 @@ impl Equities {
             .await
             .unwrap_or_else(|_| {
                 panic!(
-                    "get_metadata_info() failed on get_ticker_general() for {:?}",
+                    "get_metadata_info() failed on get_ticker_general() for {}",
                     ticker
                 )
             });
@@ -67,20 +67,7 @@ impl Equities {
             .map(|v| v.as_str().unwrap_or_default()) // Handle potential non-string values
             .unwrap_or_else(|| {
                 eprintln!(
-                    "get_metadata_info() failed to retrieve ISIN for ticker: {:?}",
-                    ticker
-                );
-                ""
-            })
-            .trim_matches('"')
-            .to_string();
-
-        let exchange_value = ticker_general
-            .get("Exchange")
-            .map(|v| v.as_str().unwrap_or_default()) // Handle potential non-string values
-            .unwrap_or_else(|| {
-                eprintln!(
-                    "get_metadata_info() failed to retrieve exchange for ticker: {:?}",
+                    "get_metadata_info() failed to retrieve ISIN for ticker: {}",
                     ticker
                 );
                 ""
@@ -93,7 +80,7 @@ impl Equities {
             isin: isin_value,
             ticker: ticker.to_string(),
             source: "eod".to_string(),
-            exchange: exchange_value,
+            exchange: exchange.to_string(),
         };
 
         Ok(series_metadata)
