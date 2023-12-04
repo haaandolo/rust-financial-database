@@ -4,7 +4,12 @@ use futures::future;
 use reqwest::Client;
 use std::env;
 
-use crate::models::ApiResponse;
+use polars::{
+    frame::DataFrame,
+    prelude::{JsonReader, SerReader},
+};
+use std::io::Cursor;
+// use crate::models::{ApiResponse, IntradayReponse};
 // use crate::securities::Equities;
 // use crate::utility_functions::string_to_datetime;
 
@@ -23,7 +28,7 @@ impl WrapperFunctions {
         }
     }
 
-    pub async fn async_http_request(&self, urls: Vec<String>) -> Result<Vec<Vec<ApiResponse>>>{
+    pub async fn async_http_request(&self, urls: Vec<String>) -> Result<Vec<DataFrame>> {
         let bodies = future::join_all(urls.into_iter().map(|url| {
             let client = self.client.clone();
             async move {
@@ -37,12 +42,12 @@ impl WrapperFunctions {
         for body in bodies {
             match body {
                 Ok(body) => {
-                    let body_string = String::from_utf8_lossy(&body);
-                    let body_ohlcv: Vec<ApiResponse> = serde_json::from_str(&body_string)
-                        .unwrap_or_else(|_| {
-                            panic!("async_http_request() failed to deserialize ohlcv api text response to apiresponse struct for"); // EDIT THIS
-                        });
-                    response_vec.push(body_ohlcv);
+                    let body_string = String::from_utf8_lossy(&body).to_string();
+                    let cursor = Cursor::new(body_string);
+                    let df = JsonReader::new(cursor)
+                        .finish()
+                        .expect("async_http_request() failed to read Cursor to Dataframe");
+                    response_vec.push(df);
                 }
                 Err(e) => eprintln!("Got an error: {}", e),
             }
@@ -57,7 +62,7 @@ impl WrapperFunctions {
         exchanges: Vec<&str>,
         start_date: &str,
         end_date: &str,
-    ) -> Result<Vec<Vec<ApiResponse>>> {
+    ) -> Result<Vec<DataFrame>> {
         let param = vec![
             ("api_token", self.api_token.clone()), // GET RID OF THIS CLONE
             ("fmt", "json".to_string()),
@@ -84,6 +89,44 @@ impl WrapperFunctions {
             .expect("batch_get_ohlcv() failed to unwrap response_vec_api");
 
         Ok(response_vec_api)
+    }
+
+    pub async fn get_intraday_data(
+        self,
+        ticker: &str,
+        exchange: &str,
+        // start_date: &str,
+        // end_date: &str,
+        interval: &str,
+    ) -> Result<()> {
+        let param = vec![
+            ("api_token", self.api_token),
+            ("interval", interval.to_string()),
+            ("fmt", "json".to_string()),
+            // ("from", start_date.to_string()),
+            // ("to", end_  date.to_string()),
+        ];
+
+        let response_text: String = self
+            .client
+            .get(format!(
+                "https://eodhd.com/api/intraday/{}.{}",
+                ticker, exchange
+            ))
+            .query(&param)
+            .send()
+            .await?
+            .text()
+            .await?;
+
+        let cursor = Cursor::new(response_text);
+        let df = JsonReader::new(cursor)
+            .finish()
+            .expect("get_intraday_data() failed to convert Cursor to Dataframe");
+
+        println!("{:#?}", df);
+
+        Ok(())
     }
 }
 // use crate::utility_functions::string_to_datetime;

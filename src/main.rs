@@ -11,16 +11,22 @@ async fn main() {
     let wrapper_client = WrapperFunctions::new().await;
     let wrapper_test = wrapper_client
         .batch_get_ohlcv(
-            vec!["AAPL", "AAPL", "AAPL", "AAPL"],
-            vec!["US", "US", "US", "US"],
-            "2023-10-01",
+            vec!["AAPL", "AAPL", "AAPL", "AAPL", "AAPL"],
+            vec!["US", "US", "US", "US", "US"],
+            "2022-11-01",
             "2023-11-01",
         )
         .await;
+
+    // let wrapper_test = wrapper_client
+    //     .get_intraday_data("AAPL", "US", "2023-10-10 00:00:00","2023-11-01 00:00:00", "5m").await;
     println!("{:?}", wrapper_test.unwrap());
 }
 
-// finish batch_get_ohlcv() and parallel_http_request()
+// intra-day time filter
+// convert dataframe dates to actual datetime
+
+// other wrapper functions
 
 // use molly_db::database_service;
 // use molly_db::wrappers;
