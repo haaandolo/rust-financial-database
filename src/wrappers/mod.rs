@@ -3,13 +3,13 @@ use dotenv::dotenv;
 use futures::future;
 use reqwest::Client;
 use std::env;
-
+use serde_json::json;
 use polars::{
     frame::DataFrame,
     prelude::{JsonReader, SerReader},
 };
+
 use std::io::Cursor;
-// use crate::models::{ApiResponse, IntradayReponse};
 // use crate::securities::Equities;
 // use crate::utility_functions::string_to_datetime;
 
@@ -95,25 +95,26 @@ impl WrapperFunctions {
         self,
         ticker: &str,
         exchange: &str,
-        // start_date: &str,
-        // end_date: &str,
+        start_date: &str,
+        end_date: &str,
         interval: &str,
-    ) -> Result<()> {
-        let param = vec![
-            ("api_token", self.api_token),
-            ("interval", interval.to_string()),
-            ("fmt", "json".to_string()),
-            // ("from", start_date.to_string()),
-            // ("to", end_  date.to_string()),
-        ];
+    ) -> Result<DataFrame> {
 
-        let response_text: String = self
+        let params = json! ({
+            "api_token": self.api_token.clone(),
+            "interval": interval,
+            "fmt": "json".to_string(),
+            "from": start_date,
+            "to": end_date
+        });
+
+        let response_text = self
             .client
             .get(format!(
                 "https://eodhd.com/api/intraday/{}.{}",
                 ticker, exchange
             ))
-            .query(&param)
+            .query(&params)
             .send()
             .await?
             .text()
@@ -123,10 +124,7 @@ impl WrapperFunctions {
         let df = JsonReader::new(cursor)
             .finish()
             .expect("get_intraday_data() failed to convert Cursor to Dataframe");
-
-        println!("{:#?}", df);
-
-        Ok(())
+        Ok(df)
     }
 }
 // use crate::utility_functions::string_to_datetime;

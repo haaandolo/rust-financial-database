@@ -9,17 +9,17 @@ async fn main() {
     println!("{:?}", thing2.unwrap());
 
     let wrapper_client = WrapperFunctions::new().await;
-    let wrapper_test = wrapper_client
-        .batch_get_ohlcv(
-            vec!["AAPL", "AAPL", "AAPL", "AAPL", "AAPL"],
-            vec!["US", "US", "US", "US", "US"],
-            "2022-11-01",
-            "2023-11-01",
-        )
-        .await;
-
     // let wrapper_test = wrapper_client
-    //     .get_intraday_data("AAPL", "US", "2023-10-10 00:00:00","2023-11-01 00:00:00", "5m").await;
+    //     .batch_get_ohlcv(
+    //         vec!["AAPL", "AAPL", "AAPL", "AAPL", "AAPL"],
+    //         vec!["US", "US", "US", "US", "US"],
+    //         "2022-11-01",
+    //         "2023-11-01",
+    //     )
+    //     .await;
+
+    let wrapper_test = wrapper_client
+        .get_intraday_data("AAPL", "US", "2023-08-21 13:30:00", "023-12-15 20:55:00", "5m").await;
     println!("{:?}", wrapper_test.unwrap());
 }
 
