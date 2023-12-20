@@ -1,10 +1,12 @@
 use anyhow::Result;
 use dotenv::dotenv;
-use serde_json::Value;
+use polars::prelude::*;
+use reqwest::Client;
+use serde_json::{Value, to_string};
 use std::{collections::HashMap, env};
-use reqwest::Client; 
 
 use crate::models::OhlcvMetadata;
+use crate::wrappers::WrapperFunctions;
 
 pub struct Equities {
     client: Client,
@@ -47,7 +49,7 @@ impl Equities {
 
         let response_hashmap: HashMap<String, Value> = serde_json::from_str(&response_string)
             .expect("get_ticker_general() Failed to deserialise response_text");
-        
+
         Ok(response_hashmap)
     }
 
@@ -84,5 +86,43 @@ impl Equities {
         };
 
         Ok(series_metadata)
+    }
+
+    pub async fn batch_get_metadata_info(
+        &self,
+        tickers: &Vec<&str>,
+        exchanges: &Vec<&str>,
+    ) -> Result<Vec<OhlcvMetadata>> {
+        let mut series_metadata: Vec<OhlcvMetadata> = Vec::new();
+        for (ticker, exchange) in tickers.iter().zip(exchanges.iter()) {
+            let metadata = self.get_series_metadata(ticker, exchange).await?;
+            series_metadata.push(metadata);
+        }
+        Ok(series_metadata)
+    }
+
+    pub async fn batch_get_ohlcv_equities(
+        &self,
+        tickers: Vec<&str>,
+        exchanges: Vec<&str>,
+        start_date: &str,
+        end_date: &str,
+    ) -> Result<()> {
+        let wrapper_batch_client = WrapperFunctions::new().await;
+        let metadata_vec = self.batch_get_metadata_info(&tickers, &exchanges).await?;
+        let dfs = wrapper_batch_client
+            .batch_get_ohlcv(tickers, exchanges, start_date, end_date)
+            .await?;
+        // println!("{:?}", dfs);
+        // println!("{:?}", metadata_vec);
+
+        let test = metadata_vec.iter()
+            .map(|metadata| {
+                let series = Series::new("metadata", vec![to_string(metadata).unwrap(); 10]);
+                println!("{:?}", series);
+            });
+        
+        println!("{:?}", test);
+        Ok(())
     }
 }

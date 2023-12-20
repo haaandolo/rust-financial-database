@@ -4,11 +4,20 @@ use molly_db::wrappers::WrapperFunctions;
 
 #[tokio::main]
 async fn main() {
-    let thing = Equities::new().await;
-    let thing2 = thing.get_series_metadata("AAPL", "US").await;
-    println!("{:?}", thing2.unwrap());
+    let equities_client = Equities::new().await;
+    // let thing2 = thing.get_series_metadata("AAPL", "US").await;
+    // println!("{:?}", thing2.unwrap());
+    let equities_client = equities_client
+        .batch_get_ohlcv_equities(
+            vec!["AAPL", "AAPL", "AAPL", "AAPL", "AAPL"],
+            vec!["US", "US", "US", "US", "US"],
+            "2022-11-01",
+            "2023-11-01",
+        );
+    println!("{:?}", equities_client.await.unwrap());
 
-    let wrapper_client = WrapperFunctions::new().await;
+    // let wrapper_client = WrapperFunctions::new().await;
+
     // let wrapper_test = wrapper_client
     //     .batch_get_ohlcv(
     //         vec!["AAPL", "AAPL", "AAPL", "AAPL", "AAPL"],
@@ -18,13 +27,10 @@ async fn main() {
     //     )
     //     .await;
 
-    let wrapper_test = wrapper_client
-        .get_intraday_data("AAPL", "US", "2023-08-21 13:30:00", "023-12-15 20:55:00", "5m").await;
-    println!("{:?}", wrapper_test.unwrap());
+    // let wrapper_test = wrapper_client
+    //     .get_intraday_data("AAPL", "US", "2023-08-21", "2023-12-15", "5m").await;
+    // println!("{:?}", wrapper_test.unwrap());
 }
-
-// intra-day time filter
-// convert dataframe dates to actual datetime
 
 // other wrapper functions
 

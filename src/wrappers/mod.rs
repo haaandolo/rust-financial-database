@@ -11,7 +11,7 @@ use polars::{
 
 use std::io::Cursor;
 // use crate::securities::Equities;
-// use crate::utility_functions::string_to_datetime;
+use crate::utility_functions::string_to_timestamp;
 
 pub struct WrapperFunctions {
     client: Client,
@@ -101,11 +101,11 @@ impl WrapperFunctions {
     ) -> Result<DataFrame> {
 
         let params = json! ({
-            "api_token": self.api_token.clone(),
+            "api_token": self.api_token,
             "interval": interval,
-            "fmt": "json".to_string(),
-            "from": start_date,
-            "to": end_date
+            "fmt": "json",
+            "from": string_to_timestamp(start_date),
+            "to": string_to_timestamp(end_date)
         });
 
         let response_text = self
