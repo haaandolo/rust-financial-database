@@ -2,7 +2,7 @@ use anyhow::Result;
 use dotenv::dotenv;
 use polars::prelude::*;
 use reqwest::Client;
-use serde_json::{Value, to_string};
+use serde_json::{to_string, Value};
 use std::{collections::HashMap, env};
 
 use crate::models::OhlcvMetadata;
@@ -90,8 +90,8 @@ impl Equities {
 
     pub async fn batch_get_metadata_info(
         &self,
-        tickers: &Vec<&str>,
-        exchanges: &Vec<&str>,
+        tickers: &[&str],
+        exchanges: &[&str],
     ) -> Result<Vec<OhlcvMetadata>> {
         let mut series_metadata: Vec<OhlcvMetadata> = Vec::new();
         for (ticker, exchange) in tickers.iter().zip(exchanges.iter()) {
@@ -107,22 +107,21 @@ impl Equities {
         exchanges: Vec<&str>,
         start_date: &str,
         end_date: &str,
-    ) -> Result<()> {
+    ) -> Result<Vec<DataFrame>> {
         let wrapper_batch_client = WrapperFunctions::new().await;
         let metadata_vec = self.batch_get_metadata_info(&tickers, &exchanges).await?;
         let dfs = wrapper_batch_client
             .batch_get_ohlcv(tickers, exchanges, start_date, end_date)
             .await?;
-        // println!("{:?}", dfs);
-        // println!("{:?}", metadata_vec);
 
-        let test = metadata_vec.iter()
-            .map(|metadata| {
-                let series = Series::new("metadata", vec![to_string(metadata).unwrap(); 10]);
-                println!("{:?}", series);
-            });
-        
-        println!("{:?}", test);
-        Ok(())
+        let mut dfs_clean = Vec::new();
+        for (mut df, metadata) in dfs.into_iter().zip(metadata_vec.into_iter()) {
+            let series = Series::new("metadata", vec![to_string(&metadata)?; df.height()]);
+            df.with_column(series)
+                .expect("Could not add metadata to dataframe");
+            dfs_clean.push(df)
+        }
+
+        Ok(dfs_clean)
     }
 }

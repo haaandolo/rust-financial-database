@@ -1,6 +1,6 @@
 // use molly_db::database_service;
 use molly_db::securities::Equities;
-use molly_db::wrappers::WrapperFunctions;
+// use molly_db::wrappers::WrapperFunctions;
 
 #[tokio::main]
 async fn main() {
