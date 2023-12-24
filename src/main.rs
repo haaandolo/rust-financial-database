@@ -5,30 +5,31 @@ use molly_db::securities::Equities;
 #[tokio::main]
 async fn main() {
     let equities_client = Equities::new().await;
-    let equity_generals = equities_client
-        .batch_get_ticker_generals(
-            vec![("AAPL", "US"), ("AAPL", "US"), ("AAPL", "US")]
-        );
-    println!("{:#?}", equity_generals.await.unwrap());
-    // let equities_ohlcv = equities_client.batch_get_intraday_data_equities(
-    //     vec![
-    //         ("AAPL", "US"),
-    //         ("AAPL", "US"),
-    //         ("AAPL", "US"),
-    //         ("AAPL", "US"),
-    //         ("AAPL", "US"),
-    //         ("AAPL", "US"),
-    //         ("AAPL", "US"),
-    //         ("AAPL", "US"),
-    //         ("AAPL", "US"),
-    //         ("AAPL", "US"),
-    //         ("AAPL", "US"),
-    //     ],
-    //     "2023-10-30",
-    //     "2023-11-01",
-    //     "5m",
-    // );
-    // println!("EQITIES {:?}", equities_ohlcv.await.unwrap());
+    // let equity_generals = equities_client
+    //     .batch_get_metadata_info(
+    //         vec![("AAPL", "US"), ("AAPL", "US"), ("AAPL", "US")]
+    //     );
+    // println!("{:#?}", equity_generals.await.unwrap());
+
+    let equities_ohlcv = equities_client.batch_get_intraday_data_equities(
+        vec![
+            ("AAPL", "US"),
+            ("AAPL", "US"),
+            ("AAPL", "US"),
+            ("AAPL", "US"),
+            ("AAPL", "US"),
+            ("AAPL", "US"),
+            ("AAPL", "US"),
+            ("AAPL", "US"),
+            ("AAPL", "US"),
+            ("AAPL", "US"),
+            ("AAPL", "US"),
+        ],
+        "2023-10-30",
+        "2023-11-01",
+        "5m",
+    );
+    println!("EQITIES {:?}", equities_ohlcv.await.unwrap());
 
     // let equities_live = equities_client
     //     .batch_get_live_lagged_data_equity(vec![

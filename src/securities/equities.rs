@@ -8,6 +8,7 @@ use std::{collections::HashMap, env};
 use crate::models::OhlcvMetadata;
 use crate::wrappers::WrapperFunctions;
 
+#[derive(Debug, Clone)]
 pub struct Equities {
     client: Client,
     api_token: String,
@@ -30,7 +31,7 @@ impl Equities {
         end_date: &str,
     ) -> Result<Vec<DataFrame>> {
         let wrapper_batch_client = WrapperFunctions::new().await;
-        let metadata_vec = self.batch_get_metadata_info(&tickers_exchanges).await?;
+        let metadata_vec = self.clone().batch_get_metadata_info(&tickers_exchanges).await?;
         let dfs = wrapper_batch_client
             .batch_get_ohlcv(tickers_exchanges, start_date, end_date)
             .await?;
@@ -54,7 +55,7 @@ impl Equities {
         interval: &str,
     ) -> Result<Vec<DataFrame>> {
         let wrapper_batch_client = WrapperFunctions::new().await;
-        let metadata_vec = self.batch_get_metadata_info(&tickers_exchanges).await?;
+        let metadata_vec = self.clone().batch_get_metadata_info(&tickers_exchanges).await?;
         let dfs = wrapper_batch_client
             .batch_get_intraday_data(tickers_exchanges, start_date, end_date, interval)
             .await?;
@@ -75,7 +76,7 @@ impl Equities {
         tickers_exchanges: Vec<(&str, &str)>,
     ) -> Result<Vec<DataFrame>> {
         let wrapper_batch_client = WrapperFunctions::new().await;
-        let metadata_vec = self.batch_get_metadata_info(&tickers_exchanges).await?;
+        let metadata_vec = self.clone().batch_get_metadata_info(&tickers_exchanges).await?;
         let dfs = wrapper_batch_client
             .batch_get_live_lagged_data(tickers_exchanges)
             .await?;
@@ -107,7 +108,7 @@ impl Equities {
 
     pub async fn batch_get_ticker_generals(
         &self,
-        tickers_exchanges: Vec<(&str, &str)>,
+        tickers_exchanges: &[(&str, &str)],
     ) -> Result<Vec<DataFrame>> {
         let wrapper_batch_client = WrapperFunctions::new().await;
         let mut urls = Vec::new();
@@ -121,11 +122,43 @@ impl Equities {
                 );
                 urls.push(url);
             });
-        
-        let response_vec_dfs= wrapper_batch_client.async_http_request(urls).await?;
-        
+
+        let response_vec_dfs = wrapper_batch_client.async_http_request(urls).await?;
+
         Ok(response_vec_dfs)
     }
+
+    pub async fn batch_get_metadata_info(
+        self,
+        tickers_exchanges: &[(&str, &str)],
+    ) -> Result<Vec<OhlcvMetadata>> {
+        let ticker_generals = self.batch_get_ticker_generals(tickers_exchanges).await?;
+        let mut series_metadata_vec = Vec::new();
+        ticker_generals.iter().zip(tickers_exchanges.iter()).for_each(|df_ticker_exchange| {
+            let isin_value = df_ticker_exchange.0
+                .column("ISIN")
+                .expect("batch_get_series_metadata() failed to unwrap series from Result<&Series, PolarError>")
+                .get(0)
+                .expect("batch_get_series_metadata() failed to unwrap get value from Series")
+                .to_string()
+                .trim_matches('\"')
+                .to_string();
+
+            let series_metadata = OhlcvMetadata {
+                data_type: "ticker_series".to_string(),
+                isin: isin_value,
+                ticker: df_ticker_exchange.1.0.to_string(),
+                source: "eod".to_string(),
+                exchange: df_ticker_exchange.1.1.to_string()
+            };
+
+            series_metadata_vec.push(series_metadata);            
+        });
+
+        Ok(series_metadata_vec)
+    }
+
+    /**---------------------------------------------------------------------------------------------- */
 
     pub async fn get_series_metadata(&self, ticker: &str, exchange: &str) -> Result<OhlcvMetadata> {
         let ticker_general = self
@@ -162,7 +195,7 @@ impl Equities {
         Ok(series_metadata)
     }
 
-    pub async fn batch_get_metadata_info(
+    pub async fn batch_get_metadata_info2(
         &self,
         tickers_exchanges: &[(&str, &str)],
     ) -> Result<Vec<OhlcvMetadata>> {
