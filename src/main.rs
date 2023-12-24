@@ -1,38 +1,38 @@
 // use molly_db::database_service;
 use molly_db::securities::Equities;
-// use molly_db::wrappers::WrapperFunctions;
+use molly_db::wrappers::WrapperFunctions;
 
 #[tokio::main]
 async fn main() {
     let equities_client = Equities::new().await;
-    // let thing2 = thing.get_series_metadata("AAPL", "US").await;
-    // println!("{:?}", thing2.unwrap());
-    let equities_client = equities_client
+    let equities_ohlcv = equities_client
         .batch_get_ohlcv_equities(
-            vec!["AAPL", "AAPL", "AAPL", "AAPL", "AAPL"],
-            vec!["US", "US", "US", "US", "US"],
+            vec![("AAPL", "US"), ("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),],
             "2022-11-01",
             "2023-11-01",
         );
-    println!("{:?}", equities_client.await.unwrap());
+    println!("EQUITIES {:?}", equities_ohlcv.await.unwrap());
 
-    // let wrapper_client = WrapperFunctions::new().await;
+    let wrapper_client = WrapperFunctions::new().await;
+    let wrapper_intra = wrapper_client
+        .batch_get_intraday_data(
+            vec![("AAPL", "US"), ("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),],
+            "2023-10-30",
+            "2023-10-31",
+            "5m"
+        )
+        .await;
 
-    // let wrapper_test = wrapper_client
-    //     .batch_get_ohlcv(
-    //         vec!["AAPL", "AAPL", "AAPL", "AAPL", "AAPL"],
-    //         vec!["US", "US", "US", "US", "US"],
-    //         "2022-11-01",
-    //         "2023-11-01",
-    //     )
-    //     .await;
-
-    // let wrapper_test = wrapper_client
-    //     .get_intraday_data("AAPL", "US", "2023-08-21", "2023-12-15", "5m").await;
-    // println!("{:?}", wrapper_test.unwrap());
+    println!("WRAPPER {:?}", wrapper_intra.unwrap());
 }
 
-// other wrapper functions
+// BATCH INTRADAY DATA
+
+
+
+
+
+
 
 // use molly_db::database_service;
 // use molly_db::wrappers;

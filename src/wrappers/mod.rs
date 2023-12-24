@@ -1,13 +1,13 @@
 use anyhow::Result;
 use dotenv::dotenv;
 use futures::future;
-use reqwest::Client;
-use std::env;
-use serde_json::json;
 use polars::{
     frame::DataFrame,
     prelude::{JsonReader, SerReader},
 };
+use reqwest::Client;
+use serde_json::json;
+use std::env;
 
 use std::io::Cursor;
 // use crate::securities::Equities;
@@ -58,30 +58,24 @@ impl WrapperFunctions {
 
     pub async fn batch_get_ohlcv(
         &self,
-        tickers: Vec<&str>,
-        exchanges: Vec<&str>,
+        tickers_exchanges: Vec<(&str, &str)>,
         start_date: &str,
         end_date: &str,
     ) -> Result<Vec<DataFrame>> {
-        let param = vec![
-            ("api_token", self.api_token.clone()), // GET RID OF THIS CLONE
-            ("fmt", "json".to_string()),
-            ("from", start_date.to_string()),
-            ("to", end_date.to_string()),
-        ];
 
         let mut urls = Vec::new();
-        for (ticker, exchange) in tickers.iter().zip(exchanges.iter()) {
-            let url = format!("https://eodhd.com/api/eod/{}.{}?", ticker, exchange);
-            let full_url = format!(
-                "{}{}",
-                url,
-                form_urlencoded::Serializer::new(String::new())
-                    .extend_pairs(param.iter())
-                    .finish()
-            );
-            urls.push(full_url);
-        }
+        tickers_exchanges.iter()
+            .for_each(|ticker_exchange| {
+                let url = format!(
+                    "https://eodhd.com/api/eod/{}.{}?api_token={}&fmt=json&from={}&to={}",
+                    ticker_exchange.0,
+                    ticker_exchange.1,
+                    self.api_token,
+                    start_date,
+                    end_date
+                );
+                urls.push(url);
+            });
 
         let response_vec_api = self
             .async_http_request(urls)
@@ -99,7 +93,6 @@ impl WrapperFunctions {
         end_date: &str,
         interval: &str,
     ) -> Result<DataFrame> {
-
         let params = json! ({
             "api_token": self.api_token,
             "interval": interval,
@@ -126,7 +119,41 @@ impl WrapperFunctions {
             .expect("get_intraday_data() failed to convert Cursor to Dataframe");
         Ok(df)
     }
+
+    pub async fn batch_get_intraday_data(
+        self,
+        tickers_exchanges: Vec<(&str, &str)>,
+        start_date: &str,
+        end_date: &str,
+        interval: &str,
+    ) -> Result<Vec<DataFrame>> {
+        let mut urls = Vec::new();
+        let start_date_timestamp = string_to_timestamp(start_date);
+        let end_date_timestamp = string_to_timestamp(end_date);
+        tickers_exchanges
+            .iter()
+            .for_each(|ticker_exchange| {
+                let url = format!(
+                    "https://eodhd.com/api/intraday/{}.{}?api_token={}&interval={}&fmt=json&from={}&to={}",
+                    ticker_exchange.0,
+                    ticker_exchange.1,
+                    self.api_token,
+                    interval,
+                    start_date_timestamp,
+                    end_date_timestamp
+                );
+                urls.push(url);
+            });
+
+        let response_vec_intraday_data = self
+            .async_http_request(urls)
+            .await
+            .expect("batch_get_ohlcv() failed to unwrap response_vec_api");
+
+        Ok(response_vec_intraday_data)
+    }
 }
+
 // use crate::utility_functions::string_to_datetime;
 
 // use dotenv::dotenv;
