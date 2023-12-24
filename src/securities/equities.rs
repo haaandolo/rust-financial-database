@@ -23,6 +23,110 @@ impl Equities {
         }
     }
 
+    pub async fn batch_get_ohlcv_equities(
+        &self,
+        tickers_exchanges: Vec<(&str, &str)>,
+        start_date: &str,
+        end_date: &str,
+    ) -> Result<Vec<DataFrame>> {
+        let wrapper_batch_client = WrapperFunctions::new().await;
+        let metadata_vec = self.batch_get_metadata_info(&tickers_exchanges).await?;
+        let dfs = wrapper_batch_client
+            .batch_get_ohlcv(tickers_exchanges, start_date, end_date)
+            .await?;
+
+        let mut dfs_clean = Vec::new();
+        for (mut df, metadata) in dfs.into_iter().zip(metadata_vec.into_iter()) {
+            // CHANGE "to_string(&metadata)?" TO HASHMAP IF WE NEED FOR DATABASE READS
+            let series = Series::new("metadata", vec![to_string(&metadata)?; df.height()]);
+            df.with_column(series)?;
+            dfs_clean.push(df)
+        }
+
+        Ok(dfs_clean)
+    }
+
+    pub async fn batch_get_intraday_data_equities(
+        &self,
+        tickers_exchanges: Vec<(&str, &str)>,
+        start_date: &str,
+        end_date: &str,
+        interval: &str,
+    ) -> Result<Vec<DataFrame>> {
+        let wrapper_batch_client = WrapperFunctions::new().await;
+        let metadata_vec = self.batch_get_metadata_info(&tickers_exchanges).await?;
+        let dfs = wrapper_batch_client
+            .batch_get_intraday_data(tickers_exchanges, start_date, end_date, interval)
+            .await?;
+
+        let mut dfs_clean = Vec::new();
+        for (mut df, metadata) in dfs.into_iter().zip(metadata_vec.into_iter()) {
+            // CHANGE "to_string(&metadata)?" TO HASHMAP IF WE NEED FOR DATABASE READS
+            let series = Series::new("metadata", vec![to_string(&metadata)?; df.height()]);
+            df.with_column(series)?;
+            dfs_clean.push(df)
+        }
+
+        Ok(dfs_clean)
+    }
+
+    pub async fn batch_get_live_lagged_data_equity(
+        &self,
+        tickers_exchanges: Vec<(&str, &str)>,
+    ) -> Result<Vec<DataFrame>> {
+        let wrapper_batch_client = WrapperFunctions::new().await;
+        let metadata_vec = self.batch_get_metadata_info(&tickers_exchanges).await?;
+        let dfs = wrapper_batch_client
+            .batch_get_live_lagged_data(tickers_exchanges)
+            .await?;
+
+        let mut dfs_clean = Vec::new();
+        for (mut df, metadata) in dfs.into_iter().zip(metadata_vec.into_iter()) {
+            // CHANGE "to_string(&metadata)?" TO HASHMAP IF WE NEED FOR DATABASE READS
+            let series = Series::new("metadata", vec![to_string(&metadata)?; df.height()]);
+            df.with_column(series)?;
+            dfs_clean.push(df)
+        }
+
+        Ok(dfs_clean)
+    }
+
+    /*-------------------- FUNDAMENTAL DATA -------------------- */
+
+    pub async fn batch_get_fundamental_data_equities(
+        &self,
+        tickers_exchanges: Vec<(&str, &str)>,
+    ) -> Result<Vec<DataFrame>> {
+        let wrapper_batch_client = WrapperFunctions::new().await;
+        let dfs_fundamentals = wrapper_batch_client
+            .batch_get_fundamental_data(tickers_exchanges)
+            .await?;
+
+        Ok(dfs_fundamentals)
+    }
+
+    pub async fn batch_get_ticker_generals(
+        &self,
+        tickers_exchanges: Vec<(&str, &str)>,
+    ) -> Result<Vec<DataFrame>> {
+        let wrapper_batch_client = WrapperFunctions::new().await;
+        let mut urls = Vec::new();
+        tickers_exchanges.iter()
+            .for_each(|ticker_exchange| {
+                let url = format!(
+                    "https://eodhistoricaldata.com/api/fundamentals/{}.{}?api_token={}&fmt=json&filter=General",
+                    ticker_exchange.0,
+                    ticker_exchange.1,
+                    self.api_token
+                );
+                urls.push(url);
+            });
+        
+        let response_vec_dfs= wrapper_batch_client.async_http_request(urls).await?;
+        
+        Ok(response_vec_dfs)
+    }
+
     pub async fn get_series_metadata(&self, ticker: &str, exchange: &str) -> Result<OhlcvMetadata> {
         let ticker_general = self
             .get_ticker_general(ticker, exchange)
@@ -70,38 +174,8 @@ impl Equities {
                 .await?;
             series_metadata.push(metadata);
         }
-        // for (ticker, exchange) in tickers.iter().zip(exchanges.iter()) {
-        //     let metadata = self.get_series_metadata(ticker, exchange).await?;
-        //     series_metadata.push(metadata);
-        // }
         Ok(series_metadata)
     }
-
-    pub async fn batch_get_ohlcv_equities(
-        &self,
-        tickers_exchanges: Vec<(&str, &str)>,
-        start_date: &str,
-        end_date: &str,
-    ) -> Result<Vec<DataFrame>> {
-        let wrapper_batch_client = WrapperFunctions::new().await;
-        let metadata_vec = self.batch_get_metadata_info(&tickers_exchanges).await?;
-        let dfs = wrapper_batch_client
-            .batch_get_ohlcv(tickers_exchanges, start_date, end_date)
-            .await?;
-
-        let mut dfs_clean = Vec::new();
-        for (mut df, metadata) in dfs.into_iter().zip(metadata_vec.into_iter()) {
-            // CHANGE "to_string(&metadata)?" TO HASHMAP IF WE NEED FOR DATABASE READS
-            let series = Series::new("metadata", vec![to_string(&metadata)?; df.height()]);
-            df.with_column(series)
-                .expect("Could not add metadata to dataframe");
-            dfs_clean.push(df)
-        }
-
-        Ok(dfs_clean)
-    }
-
-    /*-------------------- FUNDAMENTAL DATA -------------------- */
 
     pub async fn get_ticker_general(
         &self,
@@ -118,7 +192,7 @@ impl Equities {
 
         let response_string: String = client
             .get(format!(
-                "https://eodhd.com/api/fundamentals/{}.{}",
+                "https://eodhistoricaldata.com/api/fundamentals/{}.{}",
                 ticker, exchange
             ))
             .query(&param)
@@ -132,5 +206,4 @@ impl Equities {
 
         Ok(response_hashmap)
     }
-
 }

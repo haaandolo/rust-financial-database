@@ -1,35 +1,84 @@
 // use molly_db::database_service;
 use molly_db::securities::Equities;
-use molly_db::wrappers::WrapperFunctions;
+// use molly_db::wrappers::WrapperFunctions;
 
 #[tokio::main]
 async fn main() {
     let equities_client = Equities::new().await;
-    let equities_ohlcv = equities_client
-        .batch_get_ohlcv_equities(
-            vec![("AAPL", "US"), ("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),],
-            "2022-11-01",
-            "2023-11-01",
+    let equity_generals = equities_client
+        .batch_get_ticker_generals(
+            vec![("AAPL", "US"), ("AAPL", "US"), ("AAPL", "US")]
         );
-    println!("EQUITIES {:?}", equities_ohlcv.await.unwrap());
+    println!("{:#?}", equity_generals.await.unwrap());
+    // let equities_ohlcv = equities_client.batch_get_intraday_data_equities(
+    //     vec![
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //     ],
+    //     "2023-10-30",
+    //     "2023-11-01",
+    //     "5m",
+    // );
+    // println!("EQITIES {:?}", equities_ohlcv.await.unwrap());
 
-    let wrapper_client = WrapperFunctions::new().await;
-    let wrapper_intra = wrapper_client
-        .batch_get_intraday_data(
-            vec![("AAPL", "US"), ("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),("AAPL", "US"),],
-            "2023-10-30",
-            "2023-10-31",
-            "5m"
-        )
-        .await;
+    // let equities_live = equities_client
+    //     .batch_get_live_lagged_data_equity(vec![
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //         ("AAPL", "US"),
+    //     ])
+    //     .await;
+    // println!("EQUITIES LIVE {:?}", &equities_live.unwrap());
 
-    println!("WRAPPER {:?}", wrapper_intra.unwrap());
+    // let wrapper_client = WrapperFunctions::new().await;
+    // let wrapper_intra = wrapper_client
+    //     .batch_get_intraday_data(
+    //         vec![
+    //             ("AAPL", "US"),
+    //             ("AAPL", "US"),
+    //             ("AAPL", "US"),
+    //             ("AAPL", "US"),
+    //             ("AAPL", "US"),
+    //             ("AAPL", "US"),
+    //             ("AAPL", "US"),
+    //             ("AAPL", "US"),
+    //             ("AAPL", "US"),
+    //             ("AAPL", "US"),
+    //             ("AAPL", "US"),
+    //         ],
+    //         "2023-10-30",
+    //         "2023-10-31",
+    //         "5m",
+    //     )
+    //     .await;
+    // println!("WRAPPER INTRA {:?}", wrapper_intra.unwrap());
+
+    // let wrapper_fundamental = wrapper_client
+    //     .batch_get_fundamental_data(
+    //         vec![("AAPL", "US"), ("AAPL", "US"), ("AAPL", "US")],
+    //     );
+    // println!("{:#?}", wrapper_fundamental.await.unwrap());
 }
 
-// BATCH INTRADAY DATA
-
-
-
+// FINISH BATCH GET METADATA INFO
+// THEN INTEGRATE THIS INTO THE OTHER FUNCTION CALLS
 
 
 

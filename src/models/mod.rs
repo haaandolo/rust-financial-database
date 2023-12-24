@@ -32,3 +32,13 @@ pub struct Ohlcv {
     pub volume: i32,
     pub metadata: OhlcvMetadata,
 }
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum EodExchangeTypes {
+    US, // US is only used for US equities and is an aggregate of 60 US exchanges, there are more
+    COMM, // commodities
+    CC, // crypto currencies
+    BOND, 
+    FOREX
+}

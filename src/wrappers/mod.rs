@@ -6,12 +6,10 @@ use polars::{
     prelude::{JsonReader, SerReader},
 };
 use reqwest::Client;
-use serde_json::json;
 use std::env;
 
-use std::io::Cursor;
-// use crate::securities::Equities;
 use crate::utility_functions::string_to_timestamp;
+use std::io::Cursor;
 
 pub struct WrapperFunctions {
     client: Client,
@@ -56,68 +54,42 @@ impl WrapperFunctions {
         Ok(response_vec)
     }
 
+    pub async fn batch_get_fundamental_data(
+        &self,
+        tickers_exchanges: Vec<(&str, &str)>,
+    ) -> Result<Vec<DataFrame>> {
+        let mut urls = Vec::new();
+        tickers_exchanges.iter().for_each(|ticker_exchange| {
+            let url = format!(
+                "https://eodhistoricaldata.com/api/fundamentals/{}.{}?api_token={}&fmt=json",
+                ticker_exchange.0, ticker_exchange.1, self.api_token,
+            );
+            urls.push(url);
+        });
+
+        let response_vec_fundamental_data = self.async_http_request(urls).await?;
+
+        Ok(response_vec_fundamental_data)
+    }
+
     pub async fn batch_get_ohlcv(
         &self,
         tickers_exchanges: Vec<(&str, &str)>,
         start_date: &str,
         end_date: &str,
     ) -> Result<Vec<DataFrame>> {
-
         let mut urls = Vec::new();
-        tickers_exchanges.iter()
-            .for_each(|ticker_exchange| {
-                let url = format!(
-                    "https://eodhd.com/api/eod/{}.{}?api_token={}&fmt=json&from={}&to={}",
-                    ticker_exchange.0,
-                    ticker_exchange.1,
-                    self.api_token,
-                    start_date,
-                    end_date
-                );
-                urls.push(url);
-            });
-
-        let response_vec_api = self
-            .async_http_request(urls)
-            .await
-            .expect("batch_get_ohlcv() failed to unwrap response_vec_api");
-
-        Ok(response_vec_api)
-    }
-
-    pub async fn get_intraday_data(
-        self,
-        ticker: &str,
-        exchange: &str,
-        start_date: &str,
-        end_date: &str,
-        interval: &str,
-    ) -> Result<DataFrame> {
-        let params = json! ({
-            "api_token": self.api_token,
-            "interval": interval,
-            "fmt": "json",
-            "from": string_to_timestamp(start_date),
-            "to": string_to_timestamp(end_date)
+        tickers_exchanges.iter().for_each(|ticker_exchange| {
+            let url = format!(
+                "https://eodhistoricaldata.com/api/eod/{}.{}?api_token={}&fmt=json&from={}&to={}",
+                ticker_exchange.0, ticker_exchange.1, self.api_token, start_date, end_date
+            );
+            urls.push(url);
         });
 
-        let response_text = self
-            .client
-            .get(format!(
-                "https://eodhd.com/api/intraday/{}.{}",
-                ticker, exchange
-            ))
-            .query(&params)
-            .send()
-            .await?
-            .text()
-            .await?;
+        let response_vec_api = self.async_http_request(urls).await?;
 
-        let cursor = Cursor::new(response_text);
-        let df = JsonReader::new(cursor)
-            .finish()
-            .expect("get_intraday_data() failed to convert Cursor to Dataframe");
-        Ok(df)
+        Ok(response_vec_api)
     }
 
     pub async fn batch_get_intraday_data(
@@ -134,7 +106,7 @@ impl WrapperFunctions {
             .iter()
             .for_each(|ticker_exchange| {
                 let url = format!(
-                    "https://eodhd.com/api/intraday/{}.{}?api_token={}&interval={}&fmt=json&from={}&to={}",
+                    "https://eodhistoricaldata.com/api/intraday/{}.{}?api_token={}&interval={}&fmt=json&from={}&to={}",
                     ticker_exchange.0,
                     ticker_exchange.1,
                     self.api_token,
@@ -145,12 +117,27 @@ impl WrapperFunctions {
                 urls.push(url);
             });
 
-        let response_vec_intraday_data = self
-            .async_http_request(urls)
-            .await
-            .expect("batch_get_ohlcv() failed to unwrap response_vec_api");
+        let response_vec_intraday_data = self.async_http_request(urls).await?;
 
         Ok(response_vec_intraday_data)
+    }
+
+    pub async fn batch_get_live_lagged_data(
+        &self,
+        tickers_exchanges: Vec<(&str, &str)>,
+    ) -> Result<Vec<DataFrame>> {
+        let mut urls = Vec::new();
+        tickers_exchanges.iter().for_each(|ticker_exchange| {
+            let url = format!(
+                "https://eodhistoricaldata.com/api/real-time/{}.{}?api_token={}&fmt=json",
+                ticker_exchange.0, ticker_exchange.1, self.api_token,
+            );
+            urls.push(url);
+        });
+
+        let response_vec_live_lagged_data = self.async_http_request(urls).await?;
+
+        Ok(response_vec_live_lagged_data)
     }
 }
 
@@ -341,3 +328,41 @@ impl WrapperFunctions {
 // //     log::info!("Sucessfully retrieved metadata info");
 // //     Ok(metadata)
 // // }
+
+/*------------------------------ DONT DEL ---------------------------------- */
+
+// pub async fn get_intraday_data(
+//     self,
+//     ticker: &str,
+//     exchange: &str,
+//     start_date: &str,
+//     end_date: &str,
+//     interval: &str,
+// ) -> Result<DataFrame> {
+//     let params = json! ({
+//         "api_token": self.api_token,
+//         "interval": interval,
+//         "fmt": "json",
+//         "from": string_to_timestamp(start_date),
+//         "to": string_to_timestamp(end_date)
+//     });
+
+//     let response_text = self
+//         .client
+//         .get(format!(
+//             "https://eodhistoricaldata.com/api/intraday/{}.{}",
+//             ticker, exchange
+//         ))
+//         .query(&params)
+//         .send()
+//         .await?
+//         .text()
+//         .await?;
+
+//     let cursor = Cursor::new(response_text);
+//     let df = JsonReader::new(cursor)
+//         .finish()
+//         .expect("get_intraday_data() failed to convert Cursor to Dataframe");
+
+//     Ok(df)
+// }
