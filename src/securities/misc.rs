@@ -1,1 +1,0 @@
-// Get delisted and listed assets from the exchange
