@@ -4,8 +4,8 @@ use futures::future;
 use mongodb::bson;
 use polars::prelude::*;
 use reqwest::Client;
-use std::io::Cursor;
 use serde_json::to_string;
+use std::io::Cursor;
 
 use crate::models::eod_models::SeriesMetaData;
 

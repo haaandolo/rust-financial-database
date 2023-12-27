@@ -1,3 +1,6 @@
+pub mod mongodb;
+pub use mongodb::MongoDbClient;
+
 // use crate::{utility_functions::string_to_datetime, wrappers::{OhlcvMetadata, DocumentMetaData}};
 // use crate::wrappers::Ohlcv;
 

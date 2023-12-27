@@ -90,7 +90,7 @@ impl EodApi {
 
     pub async fn batch_get_live_lagged_data(
         &self,
-        tickers_exchanges: Vec<(&str, &str)>,
+        tickers_exchanges: Vec<(&str, &str)>, // (ticker, exchange)
     ) -> Result<Vec<DataFrame>> {
         let mut urls = Vec::new();
         tickers_exchanges.iter().for_each(|ticker_exchange| {
@@ -216,22 +216,22 @@ impl EodApi {
         }
         Ok(metadata_vec)
     }
-
-    // pub async fn batch_get_fundamental_data(
-    //     &self,
-    //     tickers_exchanges: Vec<(&str, &str)>,
-    // ) -> Result<Vec<DataFrame>> {
-    //     let mut urls = Vec::new();
-    //     tickers_exchanges.iter().for_each(|ticker_exchange| {
-    //         let url = format!(
-    //             "https://eodhistoricaldata.com/api/fundamentals/{}.{}?api_token={}&fmt=json",
-    //             ticker_exchange.0, ticker_exchange.1, self.api_token,
-    //         );
-    //         urls.push(url);
-    //     });
-
-    //     let response_vec_fundamental_data = self.async_http_request(urls).await?;
-
-    //     Ok(response_vec_fundamental_data)
-    // }
 }
+
+// pub async fn batch_get_fundamental_data(
+//     &self,
+//     tickers_exchanges: Vec<(&str, &str)>,
+// ) -> Result<Vec<DataFrame>> {
+//     let mut urls = Vec::new();
+//     tickers_exchanges.iter().for_each(|ticker_exchange| {
+//         let url = format!(
+//             "https://eodhistoricaldata.com/api/fundamentals/{}.{}?api_token={}&fmt=json",
+//             ticker_exchange.0, ticker_exchange.1, self.api_token,
+//         );
+//         urls.push(url);
+//     });
+
+//     let response_vec_fundamental_data = self.async_http_request(urls).await?;
+
+//     Ok(response_vec_fundamental_data)
+// }
