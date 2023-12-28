@@ -1,14 +1,15 @@
 use anyhow::Result;
 use bson::{doc, Bson, DateTime, Document};
 use dotenv::dotenv;
+use mongodb::Collection;
 use mongodb::{Client, Database};
 use polars::prelude::*;
 use serde_json::to_string;
 use std::env;
 
-use crate::models::eod_models::Ohlcv;
+use crate::models::eod_models::{Ohlcv, SeriesMetaData};
+use crate::utility_functions::string_to_datetime;
 use polars::frame::row::Row;
-// use crate::utility_functions::clean_df_before_insert;
 pub struct MongoDbClient {
     client: Client,
     db: Database,
@@ -38,25 +39,39 @@ impl MongoDbClient {
                 let row = df.get_row(i).unwrap();
                 let mut doc_row = Document::new();
                 for (i, name) in col_names.iter().enumerate().take(df.width()) {
-                    match row.0.get(i) {
-                        Some(AnyValue::Float64(number)) => {
-                            doc_row.insert(name.to_string(), Bson::Double(*number));
-                        }
-                        Some(AnyValue::Utf8(string)) => {
-                            doc_row.insert(name.to_string(), Bson::String(string.to_string()));
-                        }
-                        Some(AnyValue::Int32(number)) => {
-                            doc_row.insert(name.to_string(), Bson::Int32(*number));
-                        }
-                        Some(AnyValue::Int64(number)) => {
-                            doc_row.insert(name.to_string(), Bson::Int64(*number));
-                        }
-                        Some(AnyValue::Null) => {
+                    match (*name, row.0.get(i)) {
+                        (_, Some(AnyValue::Null)) => {
                             doc_row.insert(name.to_string(), Bson::Null);
                         }
-                        _ => println!("Could not parse value to Bson type!"),
+                        ("open", Some(AnyValue::Float64(number)))
+                        | ("high", Some(AnyValue::Float64(number)))
+                        | ("low", Some(AnyValue::Float64(number)))
+                        | ("close", Some(AnyValue::Float64(number)))
+                        | ("adjusted_close", Some(AnyValue::Float64(number))) => {
+                            doc_row.insert(name.to_string(), Bson::Double(*number));
+                        }
+                        ("volume", Some(AnyValue::Int64(number))) => {
+                            doc_row.insert(name.to_string(), *number);
+                        }
+                        ("datetime", Some(AnyValue::Utf8(string))) => {
+                            let datetime = string_to_datetime(string).await;
+                            doc_row.insert(name.to_string(), datetime);
+                        }
+                        ("date", Some(AnyValue::Utf8(string))) => {
+                            let date = string_to_datetime(string).await;
+                            doc_row.insert(name.to_string(), date);
+                        }
+                        ("metadata", Some(AnyValue::Utf8(string))) => {
+                            let metadata: SeriesMetaData =
+                                serde_json::from_str(string).expect("Could not parse metadata!");
+                            let metadata_bson = bson::to_bson(&metadata)
+                                .expect("Could not convert metadata to Bson!");
+                            doc_row.insert(name.to_string(), metadata_bson);
+                        }
+                        _ => log::error!("insert_series() Could not parse column!"),
                     }
                 }
+                // if document row datetime is greater than metadata datetime, push row to doc_vec
                 doc_vec.push(doc_row);
             }
             let collection = self.db.collection::<Document>("equity_spot_1d");

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{DateTime, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use futures::future;
 use mongodb::bson;
 use polars::prelude::*;
@@ -20,7 +20,13 @@ pub async fn string_to_datetime(date: &str) -> bson::DateTime {
             let datetime_utc: DateTime<Utc> = Utc.from_utc_datetime(&datetime);
             bson::DateTime::from_chrono(datetime_utc)
         }
-        _ => bson::DateTime::parse_rfc3339_str("1998-02-12T00:01:00.023Z").unwrap(),
+        _ => {
+            let datetime = NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S").expect(
+                "Could not parse date string in %Y-%m-%d %H:%M:%S to NativeDateTime object",
+            );
+            let datetime_utc: DateTime<Utc> = Utc.from_utc_datetime(&datetime);
+            bson::DateTime::from_chrono(datetime_utc)
+        } 
     }
 }
 
