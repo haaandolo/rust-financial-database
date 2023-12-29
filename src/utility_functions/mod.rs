@@ -7,7 +7,7 @@ use reqwest::Client;
 use serde_json::to_string;
 use std::io::Cursor;
 
-use crate::models::eod_models::SeriesMetaData;
+use crate::models::eod_models::OhlcvMetaData;
 
 /*------------------------------ DATE UTILITY FUNCTIONS ------------------------------*/
 pub async fn string_to_datetime(date: &str) -> bson::DateTime {
@@ -51,6 +51,11 @@ pub fn get_current_timestamp() -> i64 {
     current_date.timestamp()
 }
 
+pub fn get_current_datetime_bson() -> bson::DateTime {
+    let current_date = Utc::now();
+    bson::DateTime::from_chrono(current_date)
+}
+
 /*------------------------------ NETWORK UTILITY FUNCTIONS ------------------------------*/
 pub async fn async_http_request(client: Client, urls: Vec<String>) -> Result<Vec<DataFrame>> {
     let bodies = future::join_all(urls.into_iter().map(|url| {
@@ -83,7 +88,7 @@ pub async fn async_http_request(client: Client, urls: Vec<String>) -> Result<Vec
 /*------------------------------ DATA WRANGLING UTILITY FUNCTIONS ------------------------------*/
 pub async fn add_metadata_to_df(
     dfs: Vec<DataFrame>,
-    metadata_vec: Vec<SeriesMetaData>,
+    metadata_vec: Vec<OhlcvMetaData>,
 ) -> Result<Vec<DataFrame>> {
     let mut dfs_clean = Vec::new();
     for (mut df, metadata) in dfs.into_iter().zip(metadata_vec.into_iter()) {

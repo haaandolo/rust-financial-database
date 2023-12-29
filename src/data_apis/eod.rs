@@ -5,7 +5,7 @@ use reqwest::Client;
 use serde_json::Value;
 use std::{collections::HashMap, env};
 
-use crate::models::eod_models::SeriesMetaData;
+use crate::models::eod_models::OhlcvMetaData;
 use crate::utility_functions::{
     add_metadata_to_df, async_http_request, get_current_date_string, get_current_timestamp,
     string_to_timestamp,
@@ -112,12 +112,12 @@ impl EodApi {
     pub async fn batch_get_metadata(
         &self,
         tickers_exchanges: &[(&str, &str)],
-    ) -> Result<Vec<SeriesMetaData>> {
+    ) -> Result<Vec<OhlcvMetaData>> {
         let mut metadata_vec = Vec::new();
         for ticker_exchange in tickers_exchanges {
             match ticker_exchange.1 {
                 "COM" => {
-                    let series_metadata = SeriesMetaData {
+                    let series_metadata = OhlcvMetaData {
                         data_type: "commodities_series".to_string(),
                         ticker: ticker_exchange.0.to_string(),
                         source: "eod".to_string(),
@@ -128,7 +128,7 @@ impl EodApi {
                     metadata_vec.push(series_metadata);
                 }
                 "CC" => {
-                    let series_metadata = SeriesMetaData {
+                    let series_metadata = OhlcvMetaData {
                         data_type: "crypto_series".to_string(),
                         ticker: ticker_exchange.0.to_string(),
                         source: "eod".to_string(),
@@ -139,7 +139,7 @@ impl EodApi {
                     metadata_vec.push(series_metadata);
                 }
                 "BOND" => {
-                    let series_metadata = SeriesMetaData {
+                    let series_metadata = OhlcvMetaData {
                         data_type: "bond_series".to_string(),
                         ticker: ticker_exchange.0.to_string(),
                         source: "eod".to_string(),
@@ -150,7 +150,7 @@ impl EodApi {
                     metadata_vec.push(series_metadata);
                 }
                 "FOREX" => {
-                    let series_metadata = SeriesMetaData {
+                    let series_metadata = OhlcvMetaData {
                         data_type: "forex_series".to_string(),
                         ticker: ticker_exchange.0.to_string(),
                         source: "eod".to_string(),
@@ -201,7 +201,7 @@ impl EodApi {
                         .trim_matches('"')
                         .to_string();
 
-                    let series_metadata = SeriesMetaData {
+                    let series_metadata = OhlcvMetaData {
                         data_type: "equity_series".to_string(),
                         ticker: ticker_exchange.0.to_string(),
                         source: "eod".to_string(),
