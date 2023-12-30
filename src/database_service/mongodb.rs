@@ -11,8 +11,10 @@ use mongodb::{
     Client,
 };
 use polars::prelude::*;
+use std::collections::{HashMap, HashSet};
 use std::env;
 
+use crate::data_apis::EodApi;
 use crate::models::eod_models::{OhlcvMetaData, TimeseriesMetaDataStruct};
 use crate::utility_functions::{get_current_datetime_bson, string_to_datetime};
 
@@ -133,28 +135,37 @@ impl MongoDbClient {
 
     pub async fn get_data_from_apis(
         &self,
-        tickers: &[(&str, &str, &str, &str, &str)],
+        tickers: &[(&str, &str, &str, &str, &str)], // (ticker, exchange, start_date, collection_name, api)
     ) -> Result<()> {
-        for ticker in tickers.iter() {
-            match ticker.4 {
-                "eod" => {
-                    let eod_client = crate::data_apis::EodApi::new().await;
-                    let granularity = ticker.3.chars().last();
-                    match granularity  {
-                        Some('d') => {
-                            let eod_ohlcv = eod_client.get_ohlcv(ticker).await?;
-                            println!("{:#?}", eod_ohlcv)
-                        },
-                        Some('h') => {},
-                        Some('m') => {},
-                        Some('e') => {},
-                        _ => log::error!("Could not parse granularity for: {}", ticker.0),
-                    }
+        // sort tickers by api source (eod, binance, etc.). Output will be a tuple:
+        // ("eod", Vec<(ticker, exchange, start_date, collection_name, api)>)
+        // ("binance", Vec<(ticker, exchange, start_date, collection_name, api)>)
+        let mut sorted_tickers = Vec::new();
+        let datasource_apis: HashSet<&str> = tickers.iter().map(|tuple| tuple.4).collect();
+        datasource_apis.into_iter().for_each(|datasource| {
+            let filtered_tickers = tickers
+                .iter()
+                .filter(|tuple| {
+                    let tuple = **tuple;
+                    tuple.4 == datasource
+                }) // tuple.4 == datasource)
+                .collect::<Vec<_>>();
+            let filtered_tickers_tup = (datasource, filtered_tickers);
+            sorted_tickers.push(filtered_tickers_tup);
+        });
 
+        for datasource in sorted_tickers.into_iter() {
+            match datasource {
+                ("eod", _) => {
+                    let eod_client = EodApi::new().await;
+                    let ticker_infos = datasource.1;
+                    let _ = eod_client.batch_get_series_all(&ticker_infos).await;
+                    println!("eod");
                 }
-                _ => log::error!("API source does not exist for: {}", ticker.0),
+                _ => log::error!("Datasource: {} is not supported!", datasource.0),
             }
         }
+
         Ok(())
     }
 
