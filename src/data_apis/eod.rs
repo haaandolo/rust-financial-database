@@ -1,8 +1,10 @@
 use anyhow::Result;
 use dotenv::dotenv;
 use polars::frame::DataFrame;
+use polars::prelude::*;
 use reqwest::Client;
-use serde_json::Value;
+use serde_json::{Value, to_string};
+use std::io::Cursor;
 use std::{collections::HashMap, env};
 
 use crate::models::eod_models::OhlcvMetaData;
@@ -215,6 +217,132 @@ impl EodApi {
             }
         }
         Ok(metadata_vec)
+    }
+
+    pub async fn get_metadata(
+        &self,
+        ticker: &(&str, &str, &str, &str, &str),
+    ) -> Result<OhlcvMetaData> {
+        match ticker.1 {
+            "COM" => {
+                let series_metadata = OhlcvMetaData {
+                    data_type: "commodities_series".to_string(),
+                    ticker: ticker.0.to_string(),
+                    source: "eod".to_string(),
+                    exchange: ticker.1.to_string(),
+                    isin: None,
+                    currency: None,
+                };
+                Ok(series_metadata)
+            }
+            "CC" => {
+                let series_metadata = OhlcvMetaData {
+                    data_type: "crypto_series".to_string(),
+                    ticker: ticker.0.to_string(),
+                    source: "eod".to_string(),
+                    exchange: ticker.1.to_string(),
+                    isin: None,
+                    currency: None,
+                };
+                Ok(series_metadata)
+            }
+            "BOND" => {
+                let series_metadata = OhlcvMetaData {
+                    data_type: "bond_series".to_string(),
+                    ticker: ticker.0.to_string(),
+                    source: "eod".to_string(),
+                    exchange: ticker.1.to_string(),
+                    isin: None,
+                    currency: None,
+                };
+                Ok(series_metadata)
+            }
+            "FOREX" => {
+                let series_metadata = OhlcvMetaData {
+                    data_type: "forex_series".to_string(),
+                    ticker: ticker.0.to_string(),
+                    source: "eod".to_string(),
+                    exchange: ticker.1.to_string(),
+                    isin: None,
+                    currency: None,
+                };
+                Ok(series_metadata)
+            }
+            _ => {
+                let response_string = self.client
+                    .get(format!(
+                        "https://eodhistoricaldata.com/api/fundamentals/{}.{}?api_token={}&fmt=json&filter=General",
+                        ticker.0, ticker.1, self.api_token,
+                    ))
+                    .send()
+                    .await?
+                    .text()
+                    .await?;
+
+                let response_hashmap: HashMap<String, Value> =
+                    serde_json::from_str(&response_string)
+                        .expect("batch_get_metadata() Failed to deserialise response_text");
+
+                let isin_value = response_hashmap
+                    .get("ISIN")
+                    .map(|v| v.as_str().unwrap_or_default()) // Handle potential non-string values
+                    .unwrap_or_else(|| {
+                        eprintln!(
+                            "batch_get_metadata() failed to retrieve ISIN for ticker: {}",
+                            ticker.0
+                        );
+                        ""
+                    })
+                    .trim_matches('"')
+                    .to_string();
+
+                let ticker_denomination = response_hashmap
+                    .get("CurrencyCode")
+                    .map(|v| v.as_str().unwrap_or_default()) // Handle potential non-string values
+                    .unwrap_or_else(|| {
+                        eprintln!(
+                            "batch_get_metadata() failed to retrieve currecny for ticker: {}",
+                            ticker.0
+                        );
+                        ""
+                    })
+                    .trim_matches('"')
+                    .to_string();
+
+                let series_metadata = OhlcvMetaData {
+                    data_type: "equity_series".to_string(),
+                    ticker: ticker.0.to_string(),
+                    source: "eod".to_string(),
+                    exchange: ticker.1.to_string(),
+                    isin: Some(isin_value),
+                    currency: Some(ticker_denomination),
+                };
+                Ok(series_metadata)
+            }
+        }
+    }
+
+    pub async fn get_ohlcv(
+        &self,
+        ticker: &(&str, &str, &str, &str, &str), // (ticker, exchange, start_date, collection_name, api)
+    ) -> Result<DataFrame> {
+        let end_date = get_current_date_string();
+        let url = format!(
+            "https://eodhistoricaldata.com/api/eod/{}.{}?api_token={}&fmt=json&from={}&to={}",
+            ticker.0, ticker.1, self.api_token, ticker.2, end_date
+        );
+
+        let response_text: String = self.client.clone().get(url).send().await?.text().await?;
+        let cursor = Cursor::new(response_text);
+        let mut df = JsonReader::new(cursor)
+            .finish()
+            .expect("Eod get_ohlc() failed to read Cursor to Dataframe");
+
+        let metadata = self.get_metadata(ticker).await?;
+        let series = Series::new("metadata", vec![to_string(&metadata)?; df.height()]);
+        df.with_column(series)?;
+
+        Ok(df)
     }
 }
 

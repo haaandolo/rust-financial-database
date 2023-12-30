@@ -46,7 +46,7 @@ pub enum OhlcGranularity {
 pub struct TimeseriesMetaDataStruct {
     pub ticker: String,
     pub exchange: String,
-    pub colletion_name: String,
+    pub collection_name: String,
     pub source: String,
     pub from: DateTime,
     pub to: DateTime,

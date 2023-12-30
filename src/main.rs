@@ -61,4 +61,4 @@ async fn main() {
     // println!("{:#?}", eod_live.unwrap());
 }
 
-// INSERT METADATA TO DB
+// MAKE MIXED GET DATA FUNCTION IN EOD API

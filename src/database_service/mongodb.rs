@@ -44,7 +44,7 @@ impl MongoDbClient {
     pub async fn create_series_collection(
         &self,
         ticker: &str,
-        collection_name: &String,
+        collection_name: &str,
     ) -> Result<bool> {
         let series_db = self.client.clone().database(&self.db_name);
         let timeseries_options = TimeseriesOptions::builder()
@@ -71,7 +71,7 @@ impl MongoDbClient {
         Ok(true)
     }
 
-    pub async fn create_metadata_collection(self, collection_name: &String) -> Result<bool> {
+    pub async fn create_metadata_collection(&self, collection_name: &str) -> Result<bool> {
         let metadata_db = self.client.clone().database(&self.db_metadata_name);
         metadata_db
             .create_collection(&collection_name, None)
@@ -86,52 +86,83 @@ impl MongoDbClient {
 
     pub async fn insert_metadata(
         &self,
-        ticker: (&str, &str, &str, &str, &str), // (ticker, exchange, start_date, collection_name, api)
-        collection_name: &String,
+        ticker: &(&str, &str, &str, &str, &str), // (ticker, exchange, start_date, collection_name, api)
+        collection_name: &str,
     ) -> Result<bool> {
         let metadata_db = self.client.clone().database(&self.db_metadata_name);
         let metadata = TimeseriesMetaDataStruct {
             ticker: ticker.0.to_string(),
             exchange: ticker.1.to_string(),
-            colletion_name: ticker.3.to_string(),
+            collection_name: ticker.3.to_string(),
             source: ticker.4.to_string(),
             from: string_to_datetime(ticker.2).await,
             to: get_current_datetime_bson(),
             last_updated: get_current_datetime_bson(),
         };
 
-        let metadata_bson = bson::to_bson(&metadata).expect("Could not convert metadata to Bson!");
-
-        let collection = metadata_db.collection::<Document>(&collection_name);
+        let collection = metadata_db.collection(collection_name);
         collection
             .insert_one(metadata, None)
             .await
             .expect("Could not insert metadata into MongoDB!");
+
         Ok(true)
     }
 
     pub async fn ensure_series_collection_exists(
         &self,
-        tickers: Vec<(&str, &str, &str, &str, &str)>, // (ticker, exchange, start_date, collection_name, api)
+        tickers: &[(&str, &str, &str, &str, &str)], // (ticker, exchange, start_date, collection_name, api)
     ) -> Result<bool> {
         let metadata_db = self.client.clone().database(&self.db_metadata_name);
-        // let series_db = self.client.clone().database(&self.db_name);
         for ticker in tickers.iter() {
             let metadata_names = metadata_db.list_collection_names(None).await?;
             let collection_name = ticker.3.to_string();
             match metadata_names.contains(&collection_name) {
                 true => (),
                 false => {
-                    self.create_series_collection(ticker.3, &collection_name);
-                    self.create_metadata_collection(&collection_name);
+                    self.create_series_collection(ticker.3, &collection_name)
+                        .await?;
+                    self.create_metadata_collection(&collection_name).await?;
+                    // self.insert_metadata(ticker, &collection_name)
+                    //     .await?;
                 }
             }
         }
         Ok(true)
     }
 
+    pub async fn get_data_from_apis(
+        &self,
+        tickers: &[(&str, &str, &str, &str, &str)],
+    ) -> Result<()> {
+        for ticker in tickers.iter() {
+            match ticker.4 {
+                "eod" => {
+                    let eod_client = crate::data_apis::EodApi::new().await;
+                    let granularity = ticker.3.chars().last();
+                    match granularity  {
+                        Some('d') => {
+                            let eod_ohlcv = eod_client.get_ohlcv(ticker).await?;
+                            println!("{:#?}", eod_ohlcv)
+                        },
+                        Some('h') => {},
+                        Some('m') => {},
+                        Some('e') => {},
+                        _ => log::error!("Could not parse granularity for: {}", ticker.0),
+                    }
+
+                }
+                _ => log::error!("API source does not exist for: {}", ticker.0),
+            }
+        }
+        Ok(())
+    }
+
     pub async fn read_series(&self, tickers: Vec<(&str, &str, &str, &str, &str)>) -> Result<()> {
-        self.ensure_series_collection_exists(tickers).await?;
+        let ensure_collection_exists = self.ensure_series_collection_exists(&tickers).await?;
+        assert!(ensure_collection_exists, "{}", true);
+
+        self.get_data_from_apis(&tickers).await?;
         Ok(())
     }
 
