@@ -2,6 +2,7 @@ use anyhow::Result;
 use bson::{doc, Bson, Document};
 use chrono::Utc;
 use dotenv::dotenv;
+use futures::TryStreamExt;
 use mongodb::{
     bson,
     options::{
@@ -89,26 +90,70 @@ impl MongoDbClient {
     pub async fn insert_metadata(
         &self,
         ticker: &(&str, &str, &str, &str, &str), // (ticker, exchange, start_date, collection_name, api)
-        collection_name: &str,
     ) -> Result<bool> {
         let metadata_db = self.client.clone().database(&self.db_metadata_name);
         let metadata = TimeseriesMetaDataStruct {
             ticker: ticker.0.to_string(),
             exchange: ticker.1.to_string(),
-            collection_name: ticker.3.to_string(),
+            series_collection_name: ticker.3.to_string(),
             source: ticker.4.to_string(),
             from: string_to_datetime(ticker.2).await,
             to: get_current_datetime_bson(),
             last_updated: get_current_datetime_bson(),
         };
 
-        let collection = metadata_db.collection(collection_name);
+        let collection = metadata_db.collection(ticker.3);
         collection
             .insert_one(metadata, None)
             .await
             .expect("Could not insert metadata into MongoDB!");
 
         Ok(true)
+    }
+
+    pub async fn update_metadata(&self, ticker: &(&str, &str, &str, &str, &str)) -> Result<()> {
+        let metadata_collection = self
+            .client
+            .clone()
+            .database(&self.db_metadata_name)
+            .collection::<TimeseriesMetaDataStruct>(ticker.3);
+        let metadata_filter = doc! {
+            "ticker": ticker.0,
+            "exchange": ticker.1,
+            "series_collection_name": ticker.3,
+            "source": ticker.4,
+        };
+        let mut series_metadata = metadata_collection
+            .find(metadata_filter.clone(), None)
+            .await?;
+
+        let mut metadata_doc = Vec::new();
+        while let Some(result) = series_metadata.try_next().await? {
+            metadata_doc.push(result);
+        }
+
+        // make sure no duplicate metadata records exist
+        if metadata_doc.len() > 1 {
+            log::error!("update_metadata() found more than one metadata document for ticker: {}, exchange: {}, source: {}", ticker.0, ticker.1, ticker.4);
+        }
+
+        let start_date = string_to_datetime(ticker.2).await;
+        let current_date = get_current_datetime_bson();
+        metadata_collection
+            .update_one(
+                metadata_filter,
+                doc! {
+                    "$set": {
+                        "from": start_date,
+                        "to": current_date,
+                        "last_updated": current_date,
+                    }
+                },
+                None,
+            )
+            .await?;
+
+        Ok(())
     }
 
     pub async fn ensure_series_collection_exists(
@@ -125,8 +170,6 @@ impl MongoDbClient {
                     self.create_series_collection(ticker.3, &collection_name)
                         .await?;
                     self.create_metadata_collection(&collection_name).await?;
-                    // self.insert_metadata(ticker, &collection_name)
-                    //     .await?;
                 }
             }
         }
@@ -136,7 +179,7 @@ impl MongoDbClient {
     pub async fn get_data_from_apis(
         &self,
         tickers: &[(&str, &str, &str, &str, &str)], // (ticker, exchange, start_date, collection_name, api)
-    ) -> Result<()> {
+    ) -> Result<Vec<DataFrame>> {
         // sort tickers by api source (eod, binance, etc.). Output will be a tuple:
         // ("eod", Vec<(ticker, exchange, start_date, collection_name, api)>)
         // ("binance", Vec<(ticker, exchange, start_date, collection_name, api)>)
@@ -148,32 +191,29 @@ impl MongoDbClient {
                 .filter(|tuple| {
                     let tuple = **tuple;
                     tuple.4 == datasource
-                }) // tuple.4 == datasource)
+                })
                 .collect::<Vec<_>>();
             let filtered_tickers_tup = (datasource, filtered_tickers);
             sorted_tickers.push(filtered_tickers_tup);
         });
 
+        let mut dfs = Vec::new();
         for datasource in sorted_tickers.into_iter() {
             match datasource {
                 ("eod", _) => {
                     let eod_client = EodApi::new().await;
                     let ticker_infos = datasource.1;
-                    let _ = eod_client.batch_get_series_all(&ticker_infos).await;
-                    println!("eod");
+                    let eod_dfs = eod_client.batch_get_series_all(&ticker_infos).await?;
+                    dfs.extend(eod_dfs);
                 }
                 _ => log::error!("Datasource: {} is not supported!", datasource.0),
             }
         }
 
-        Ok(())
+        Ok(dfs)
     }
 
     pub async fn read_series(&self, tickers: Vec<(&str, &str, &str, &str, &str)>) -> Result<()> {
-        let ensure_collection_exists = self.ensure_series_collection_exists(&tickers).await?;
-        assert!(ensure_collection_exists, "{}", true);
-
-        self.get_data_from_apis(&tickers).await?;
         Ok(())
     }
 
@@ -230,6 +270,63 @@ impl MongoDbClient {
                 .collection::<Document>("equity_spot_1d");
             collection.insert_many(doc_vec, None).await?;
         }
+        Ok(())
+    }
+
+    pub async fn run(&self, tickers: Vec<(&str, &str, &str, &str, &str)>) -> Result<()> {
+        // ensure collection exits
+        let ensure_collection_exists = self.ensure_series_collection_exists(&tickers).await?;
+        assert!(ensure_collection_exists, "{}", true);
+
+        // segragate tickers into new and existing
+        let mut new_tickers = Vec::new();
+        let mut existing_tickers = Vec::new();
+        for ticker in tickers.iter() {
+            let metadata_collection = self
+                .client
+                .clone()
+                .database(&self.db_metadata_name)
+                .collection::<TimeseriesMetaDataStruct>(ticker.3);
+
+            let metadata_filter = doc! {
+                "ticker": ticker.0,
+                "exchange": ticker.1,
+                "series_collection_name": ticker.3,
+                "source": ticker.4,
+            };
+
+            let mut series_metadata = metadata_collection
+                .find(metadata_filter.clone(), None)
+                .await?;
+
+            let mut metadata_vec = Vec::new();
+            while let Some(result) = series_metadata.try_next().await? {
+                metadata_vec.push(result);
+            }
+
+            match metadata_vec.len() {
+                0 => {
+                    self.insert_metadata(ticker).await?;
+                    new_tickers.push(*ticker)
+                },
+                1 => {
+                    let metadata = metadata_vec.pop().expect("Could not pop metadata!");
+                    let new_from_string = metadata.to.to_string();
+                    // let new_from_str = &new_from_string[..10];
+                    let new_tup = (ticker.0, ticker.1, new_from_string, ticker.3, ticker.4);
+                    existing_tickers.push(new_tup)
+                } 
+                _ => log::error!("run() found more than one metadata document for ticker: {}, exchange: {}, source: {}", ticker.0, ticker.1, ticker.4),
+            }
+        }
+
+        // for new tickers, create metadata and get data and insert into db
+        let dfs = self.get_data_from_apis(&new_tickers).await?;
+        self.insert_series(dfs).await?;
+
+        // for existing tickers, update metadata and get data and insert into db
+
+
         Ok(())
     }
 }

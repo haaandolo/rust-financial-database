@@ -40,7 +40,7 @@ impl EodApi {
             match ticker_exchange.1 {
                 "COM" => {
                     let series_metadata = OhlcvMetaData {
-                        data_type: "commodities_series".to_string(),
+                        metadata_collection_name: ticker_exchange.3.to_string(),
                         ticker: ticker_exchange.0.to_string(),
                         source: "eod".to_string(),
                         exchange: ticker_exchange.1.to_string(),
@@ -51,7 +51,7 @@ impl EodApi {
                 }
                 "CC" => {
                     let series_metadata = OhlcvMetaData {
-                        data_type: "crypto_series".to_string(),
+                        metadata_collection_name: ticker_exchange.3.to_string(),
                         ticker: ticker_exchange.0.to_string(),
                         source: "eod".to_string(),
                         exchange: ticker_exchange.1.to_string(),
@@ -62,7 +62,7 @@ impl EodApi {
                 }
                 "BOND" => {
                     let series_metadata = OhlcvMetaData {
-                        data_type: "bond_series".to_string(),
+                        metadata_collection_name: ticker_exchange.3.to_string(),
                         ticker: ticker_exchange.0.to_string(),
                         source: "eod".to_string(),
                         exchange: ticker_exchange.1.to_string(),
@@ -73,7 +73,7 @@ impl EodApi {
                 }
                 "FOREX" => {
                     let series_metadata = OhlcvMetaData {
-                        data_type: "forex_series".to_string(),
+                        metadata_collection_name: ticker_exchange.3.to_string(),
                         ticker: ticker_exchange.0.to_string(),
                         source: "eod".to_string(),
                         exchange: ticker_exchange.1.to_string(),
@@ -124,7 +124,7 @@ impl EodApi {
                         .to_string();
 
                     let series_metadata = OhlcvMetaData {
-                        data_type: "equity_series".to_string(),
+                        metadata_collection_name: ticker_exchange.3.to_string(),
                         ticker: ticker_exchange.0.to_string(),
                         source: "eod".to_string(),
                         exchange: ticker_exchange.1.to_string(),
@@ -142,7 +142,7 @@ impl EodApi {
     pub async fn batch_get_series_all(
         &self,
         tickers: &[&(&str, &str, &str, &str, &str)], // (ticker, exchange, start_date, collection_name, api)
-    ) -> Result<()> {
+    ) -> Result<Vec<DataFrame>> {
         let mut urls = Vec::new();
         for ticker in tickers.iter() {
             let end_date = get_current_date_string();
@@ -156,6 +156,8 @@ impl EodApi {
                     urls.push(url);
                 }
                 Some('h') | Some('m') => {
+                    // let start_date_timestamp = string_to_timestamp("1970-01-01");
+                    // let end_date_timestamp = string_to_timestamp("1970-03-01");
                     let start_date_timestamp = string_to_timestamp(ticker.2);
                     let end_date_timestamp = get_current_timestamp();
                     let collection_name_split = ticker.3.split('_').collect::<Vec<&str>>();
@@ -190,13 +192,10 @@ impl EodApi {
 
         let dfs = async_http_request(self.client.clone(), urls_unique).await?;
         let metadatas = self.batch_get_metadata(tickers).await?;
-        // assert!(dfs.len() == metadatas.len());
-
+        // assert_eq!(dfs.len() == metadatas.len());
         let dfs_with_metadata = add_metadata_to_df(dfs, metadatas).await?;
 
-        println!("{:#?}", dfs_with_metadata);
-
-        Ok(())
+        Ok(dfs_with_metadata)
     }
 }
 
@@ -240,7 +239,7 @@ impl EodApi {
 
 // let response_vec_api = async_http_request(self.client.clone(), urls).await?;
 // let metadata_vec_response = self.batch_get_metadata(&tickers_exchanges_trunc).await?;
-// assert!(response_vec_api.len() == metadata_vec_response.len());
+// assert_eq!(response_vec_api.len() == metadata_vec_response.len());
 // let dfs = add_metadata_to_df(response_vec_api, metadata_vec_response).await?;
 
 // Ok(dfs)
@@ -275,7 +274,7 @@ impl EodApi {
 
 // let response_vec_intraday_data = async_http_request(self.client.clone(), urls).await?;
 // let metadata_vec_response = self.batch_get_metadata(&tickers_exchanges_new).await?;
-// assert!(response_vec_intraday_data.len() == metadata_vec_response.len());
+// assert_eq!(response_vec_intraday_data.len() == metadata_vec_response.len());
 // let dfs = add_metadata_to_df(response_vec_intraday_data, metadata_vec_response).await?;
 
 // Ok(dfs)
@@ -296,7 +295,7 @@ impl EodApi {
 
 // let response_vec_live_lagged_data = async_http_request(self.client.clone(), urls).await?;
 // let metadata_vec_response = self.batch_get_metadata(&tickers_exchanges).await?;
-// assert!(response_vec_live_lagged_data.len() == metadata_vec_response.len());
+// assert_eq!(response_vec_live_lagged_data.len() == metadata_vec_response.len());
 // let dfs = add_metadata_to_df(response_vec_live_lagged_data, metadata_vec_response).await?;
 
 // Ok(dfs)

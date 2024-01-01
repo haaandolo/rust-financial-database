@@ -2,15 +2,7 @@ use struct_iterable::Iterable;
 use serde::{Deserialize, Serialize};
 use bson::DateTime;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Iterable)]
-pub struct OhlcvMetaData {
-    pub data_type: String,
-    pub ticker: String,
-    pub source: String,
-    pub exchange: String,
-    pub isin: Option<String>,
-    pub currency: Option<String>,
-}
+
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ApiResponse {
@@ -46,9 +38,19 @@ pub enum OhlcGranularity {
 pub struct TimeseriesMetaDataStruct {
     pub ticker: String,
     pub exchange: String,
-    pub collection_name: String,
+    pub series_collection_name: String,
     pub source: String,
     pub from: DateTime,
     pub to: DateTime,
     pub last_updated: DateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Iterable)]
+pub struct OhlcvMetaData {
+    pub metadata_collection_name: String,
+    pub ticker: String,
+    pub source: String,
+    pub exchange: String,
+    pub isin: Option<String>,
+    pub currency: Option<String>,
 }

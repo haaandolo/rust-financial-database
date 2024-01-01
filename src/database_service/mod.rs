@@ -104,7 +104,7 @@ pub use mongodb::MongoDbClient;
 // */
 // // MAKE THIS FUNCTION RETURN A BOOL ONCE DONE
 // pub async fn insert_timeseries(client: &Client, records: Vec<Ohlcv>, dtype: &str, dformat: &str, dfreq: &str, granularity: OhlcGranularity) -> Result<()> {
-//     // get database and relevant names 
+//     // get database and relevant names
 //     let db = client.database(DATABASE_NAME);
 //     let collection_name = format!("{}_{}_{}", dtype, dformat, dfreq);
 //     let collection_metadata_name = format!("{}_{}_{}_meta", dtype, dformat, dfreq);
@@ -128,7 +128,7 @@ pub use mongodb::MongoDbClient;
 //         .metadata;
 
 //     // create unique series identifier from the timeseries metadata. Note, the timeseries
-//     // metadata field is a unique identifier. Hence, we can retrieve this and use it to 
+//     // metadata field is a unique identifier. Hence, we can retrieve this and use it to
 //     // find the sister metadata document associated with the series
 //     let mut metadata_series_filter = doc! {};
 //     let _ = &timeseries_metadata.iter()
@@ -140,7 +140,7 @@ pub use mongodb::MongoDbClient;
 //         .await
 //         .expect("insert_timeseries() errored when counting metadocument");
 
-//     // if metadata count is zero then just insert. else if count is one, then documents 
+//     // if metadata count is zero then just insert. else if count is one, then documents
 //     // associated with series already exists in collection. Hence, we use the metadata
 //     // to insert relevant rows. if count is greater than one then log a critical error.
 //     match metadata_series_count {
@@ -165,7 +165,7 @@ pub use mongodb::MongoDbClient;
 //            },
 //         1 => {
 //             // if meta record for collection exists then timeseries already in db
-//             let timeseries_metadata: TimeseriesMetaDataStruct = collection_metadata 
+//             let timeseries_metadata: TimeseriesMetaDataStruct = collection_metadata
 //                 .find_one(metadata_series_filter.clone(), None)
 //                 .await
 //                 .expect(format!("insert_timeseries() could not unwrap Result for {:#?}", &timeseries_metadata).as_str())
@@ -191,9 +191,9 @@ pub use mongodb::MongoDbClient;
 //                         .expect(format!("insert_timeseries() failed to insert OHLCV to {} collection. Metadata: {:#?}", &collection_name, &timeseries_metadata).as_str());
 //                     let update_options = UpdateOptions::builder().upsert(false).build();
 //                     collection_metadata.update_one(
-//                         metadata_series_filter.clone(), 
-//                         doc! {"$set": { "time_start": &timeseries_start,"time_end": &timeseries_end, "last_updated": bson::DateTime::from_chrono(Utc::now())}}, 
-//                         Some(update_options)) 
+//                         metadata_series_filter.clone(),
+//                         doc! {"$set": { "time_start": &timeseries_start,"time_end": &timeseries_end, "last_updated": bson::DateTime::from_chrono(Utc::now())}},
+//                         Some(update_options))
 //                         .await
 //                         .expect(format!("insert_timeseries() could not unwrap Result for {:#?}", &timeseries_metadata).as_str());
 //                 },
@@ -203,7 +203,7 @@ pub use mongodb::MongoDbClient;
 //             }
 //         },
 //         _ => {
-//             log::error!("insert_timeseries() has more than one metadata document associated with {:#?} with unique id", &timeseries_metadata) 
+//             log::error!("insert_timeseries() has more than one metadata document associated with {:#?} with unique id", &timeseries_metadata)
 //         }
 //     }
 //     Ok(())
@@ -248,7 +248,7 @@ pub use mongodb::MongoDbClient;
 //     let metadata_series_count = collection_metadata
 //         .count_documents(metadata_series_filter.clone(), None)
 //         .await
-//         .expect("insert_timeseries() errored when counting metadocument");    
+//         .expect("insert_timeseries() errored when counting metadocument");
 
 //     // depending on metadata_series_count, return series or return error
 //     match metadata_series_count {
@@ -260,8 +260,8 @@ pub use mongodb::MongoDbClient;
 //             log::info!("Found collection: {}", collection_name);
 //             let start_date = string_to_datetime(start_date).await;
 //             let end_date = string_to_datetime(end_date).await;
-//             let filter = doc! { 
-//                 "metadata": metadata_series_filter, 
+//             let filter = doc! {
+//                 "metadata": metadata_series_filter,
 //                 "datetime": {
 //                     "$gte": start_date,
 //                     "$lte": end_date
@@ -282,7 +282,7 @@ pub use mongodb::MongoDbClient;
 //         },
 //         _ => {
 //             log::error!("Got a collection greater than one for: {}", &metadata_series_filter);
-//             panic!("read_timeseries got a metadata_series_count count greater than one") 
+//             panic!("read_timeseries got a metadata_series_count count greater than one")
 //         }
 //     }
 // }
@@ -307,7 +307,7 @@ pub use mongodb::MongoDbClient;
 //         .count_documents(document_filter.clone(), None)
 //         .await
 //         .expect("insert_timeseries() errored when counting metadocument");
-    
+
 //     // serialise document data to bson object
 //     let document_serialised = bson::to_bson(&document_data)
 //         .expect(format!("insert_document() could not serialise document data for {:?}", &document_filter).as_str());

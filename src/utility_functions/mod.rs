@@ -12,6 +12,7 @@ use crate::models::eod_models::OhlcvMetaData;
 /*------------------------------ DATE UTILITY FUNCTIONS ------------------------------*/
 pub async fn string_to_datetime(date: &str) -> bson::DateTime {
     match date {
+        // _ if date == "no_date" => (),
         _ if date.len() <= 10 => {
             let date = NaiveDate::parse_from_str(date, "%Y-%m-%d")
                 .expect("Could not parse date string in %Y-%m-%d to NativeDate object");
@@ -26,7 +27,7 @@ pub async fn string_to_datetime(date: &str) -> bson::DateTime {
             );
             let datetime_utc: DateTime<Utc> = Utc.from_utc_datetime(&datetime);
             bson::DateTime::from_chrono(datetime_utc)
-        } 
+        }
     }
 }
 
