@@ -1,5 +1,6 @@
 use anyhow::Result;
-use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use bson::DateTime as BsonDateTime;
+use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveDateTime, TimeZone, Utc, Weekday};
 use futures::future;
 use mongodb::bson;
 use polars::prelude::*;
@@ -10,7 +11,7 @@ use std::io::Cursor;
 use crate::models::eod_models::OhlcvMetaData;
 
 /*------------------------------ DATE UTILITY FUNCTIONS ------------------------------*/
-pub async fn string_to_datetime(date: &str) -> bson::DateTime {
+pub fn string_to_datetime(date: &str) -> bson::DateTime {
     match date {
         // _ if date == "no_date" => (),
         _ if date.len() <= 10 => {
@@ -57,6 +58,25 @@ pub fn get_current_datetime_bson() -> bson::DateTime {
     bson::DateTime::from_chrono(current_date)
 }
 
+fn is_weekday(date: NaiveDate) -> bool {
+    let weekday = date.weekday();
+    weekday != Weekday::Sat && weekday != Weekday::Sun
+}
+
+pub fn has_business_day_between(date1: BsonDateTime, date2: BsonDateTime) -> bool {
+    let date1: DateTime<Utc> = date1.into();
+    let date2: DateTime<Utc> = date2.into();
+    let mut current_date = date1.date_naive();
+    let end_date = date2.date_naive();
+    while current_date <= end_date {
+        if is_weekday(current_date) {
+            return false;
+        }
+        current_date = current_date.succ_opt().unwrap();
+    }
+    true
+}
+
 /*------------------------------ NETWORK UTILITY FUNCTIONS ------------------------------*/
 pub async fn async_http_request(client: Client, urls: Vec<String>) -> Result<Vec<DataFrame>> {
     let bodies = future::join_all(urls.into_iter().map(|url| {
@@ -87,7 +107,7 @@ pub async fn async_http_request(client: Client, urls: Vec<String>) -> Result<Vec
 }
 
 /*------------------------------ DATA WRANGLING UTILITY FUNCTIONS ------------------------------*/
-pub async fn add_metadata_to_df(
+pub fn add_metadata_to_df(
     dfs: Vec<DataFrame>,
     metadata_vec: Vec<OhlcvMetaData>,
 ) -> Result<Vec<DataFrame>> {

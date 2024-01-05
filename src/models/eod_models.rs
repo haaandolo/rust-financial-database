@@ -17,14 +17,14 @@ pub struct ApiResponse {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Ohlcv {
-    pub datetime: String, 
+    pub datetime: DateTime, 
     pub open: f64,
     pub high: f64,
     pub low: f64,
     pub close: f64,
     pub adjusted_close: f64,
     pub volume: i32,
-    pub metadata: String,
+    pub metadata: OhlcvMetaData,
 }
 
 // MONGODB MODELS
@@ -53,4 +53,14 @@ pub struct OhlcvMetaData {
     pub exchange: String,
     pub isin: Option<String>,
     pub currency: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Iterable)]
+pub struct MongoTickerParams {
+    pub ticker: String,
+    pub exchange: String,
+    pub series_collection_name: String,
+    pub source: String,
+    pub from: DateTime,
+    pub to: DateTime,
 }

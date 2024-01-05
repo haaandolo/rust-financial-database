@@ -10,7 +10,7 @@ use std::{
     env,
 };
 
-use crate::models::eod_models::OhlcvMetaData;
+use crate::models::eod_models::{MongoTickerParams, OhlcvMetaData};
 use crate::utility_functions::{
     add_metadata_to_df, async_http_request, get_current_date_string, get_current_timestamp,
     string_to_timestamp,
@@ -31,155 +31,161 @@ impl EodApi {
         }
     }
 
-    pub async fn batch_get_metadata(
-        &self,
-        tickers_exchanges: &[&(&str, &str, &str, &str, &str)],
-    ) -> Result<Vec<OhlcvMetaData>> {
-        let mut metadata_vec = Vec::new();
-        for ticker_exchange in tickers_exchanges {
-            match ticker_exchange.1 {
-                "COM" => {
-                    let series_metadata = OhlcvMetaData {
-                        metadata_collection_name: ticker_exchange.3.to_string(),
-                        ticker: ticker_exchange.0.to_string(),
-                        source: "eod".to_string(),
-                        exchange: ticker_exchange.1.to_string(),
-                        isin: None,
-                        currency: None,
-                    };
-                    metadata_vec.push(series_metadata);
-                }
-                "CC" => {
-                    let series_metadata = OhlcvMetaData {
-                        metadata_collection_name: ticker_exchange.3.to_string(),
-                        ticker: ticker_exchange.0.to_string(),
-                        source: "eod".to_string(),
-                        exchange: ticker_exchange.1.to_string(),
-                        isin: None,
-                        currency: None,
-                    };
-                    metadata_vec.push(series_metadata);
-                }
-                "BOND" => {
-                    let series_metadata = OhlcvMetaData {
-                        metadata_collection_name: ticker_exchange.3.to_string(),
-                        ticker: ticker_exchange.0.to_string(),
-                        source: "eod".to_string(),
-                        exchange: ticker_exchange.1.to_string(),
-                        isin: None,
-                        currency: None,
-                    };
-                    metadata_vec.push(series_metadata);
-                }
-                "FOREX" => {
-                    let series_metadata = OhlcvMetaData {
-                        metadata_collection_name: ticker_exchange.3.to_string(),
-                        ticker: ticker_exchange.0.to_string(),
-                        source: "eod".to_string(),
-                        exchange: ticker_exchange.1.to_string(),
-                        isin: None,
-                        currency: None,
-                    };
-                    metadata_vec.push(series_metadata);
-                }
-                _ => {
-                    let response_string = self.client
-                        .get(format!(
-                            "https://eodhistoricaldata.com/api/fundamentals/{}.{}?api_token={}&fmt=json&filter=General",
-                            ticker_exchange.0, ticker_exchange.1, self.api_token,
-                        ))
-                        .send()
-                        .await?
-                        .text()
-                        .await?;
+    fn get_metadata(&self, ticker: MongoTickerParams) -> Result<OhlcvMetaData> {
+        match ticker.exchange.as_str() {
+            "COM" => {
+                let series_metadata = OhlcvMetaData {
+                    metadata_collection_name: ticker.series_collection_name.to_string(),
+                    ticker: ticker.ticker.to_string(),
+                    source: "eod".to_string(),
+                    exchange: ticker.exchange.to_string(),
+                    isin: None,
+                    currency: None,
+                };
+                Ok(series_metadata)
+            }
+            "CC" => {
+                let series_metadata = OhlcvMetaData {
+                    metadata_collection_name: ticker.series_collection_name.to_string(),
+                    ticker: ticker.ticker.to_string(),
+                    source: "eod".to_string(),
+                    exchange: ticker.exchange.to_string(),
+                    isin: None,
+                    currency: None,
+                };
+                Ok(series_metadata)
+            }
+            "BOND" => {
+                let series_metadata = OhlcvMetaData {
+                    metadata_collection_name: ticker.series_collection_name.to_string(),
+                    ticker: ticker.ticker.to_string(),
+                    source: "eod".to_string(),
+                    exchange: ticker.exchange.to_string(),
+                    isin: None,
+                    currency: None,
+                };
+                Ok(series_metadata)
+            }
+            "FOREX" => {
+                let series_metadata = OhlcvMetaData {
+                    metadata_collection_name: ticker.series_collection_name.to_string(),
+                    ticker: ticker.ticker.to_string(),
+                    source: "eod".to_string(),
+                    exchange: ticker.exchange.to_string(),
+                    isin: None,
+                    currency: None,
+                };
+                Ok(series_metadata)
+            }
+            _ => {
+                // let response_string = self.client
+                //         .get(format!(
+                //             "https://eodhistoricaldata.com/api/fundamentals/{}.{}?api_token={}&fmt=json&filter=General",
+                //             ticker.ticker, ticker.exchange, self.api_token,
+                //         ))
+                //         .send();
+                //         // .await
+                //         // .unwrap_or_else(|_| panic!("batch_get_metadata() failed to unwrap response {}", ticker.ticker))
+                //         // .text();
+                //         // .await
+                //         // .unwrap_or_else(|_| panic!("batch_get_metadata() failed to unwrap response {}", ticker.ticker));
 
-                    let response_hashmap: HashMap<String, Value> =
-                        serde_json::from_str(&response_string)
-                            .expect("batch_get_metadata() Failed to deserialise response_text");
+                // let response_hashmap: HashMap<String, Value> =
+                //     serde_json::from_str(&response_string)
+                //         .expect("batch_get_metadata() Failed to deserialise response_text");
 
-                    let isin_value = response_hashmap
-                        .get("ISIN")
-                        .map(|v| v.as_str().unwrap_or_default()) // Handle potential non-string values
-                        .unwrap_or_else(|| {
-                            eprintln!(
-                                "batch_get_metadata() failed to retrieve ISIN for ticker: {}",
-                                ticker_exchange.0
-                            );
-                            ""
-                        })
-                        .trim_matches('"')
-                        .to_string();
+                // let isin_value = response_hashmap
+                //     .get("ISIN")
+                //     .map(|v| v.as_str().unwrap_or_default()) // Handle potential non-string values
+                //     .unwrap_or_else(|| {
+                //         eprintln!(
+                //             "batch_get_metadata() failed to retrieve ISIN for ticker: {}",
+                //             ticker.ticker
+                //         );
+                //         ""
+                //     })
+                //     .trim_matches('"')
+                //     .to_string();
 
-                    let ticker_denomination = response_hashmap
-                        .get("CurrencyCode")
-                        .map(|v| v.as_str().unwrap_or_default()) // Handle potential non-string values
-                        .unwrap_or_else(|| {
-                            eprintln!(
-                                "batch_get_metadata() failed to retrieve currecny for ticker: {}",
-                                ticker_exchange.0
-                            );
-                            ""
-                        })
-                        .trim_matches('"')
-                        .to_string();
+                // let ticker_denomination = response_hashmap
+                //     .get("CurrencyCode")
+                //     .map(|v| v.as_str().unwrap_or_default()) // Handle potential non-string values
+                //     .unwrap_or_else(|| {
+                //         eprintln!(
+                //             "batch_get_metadata() failed to retrieve currecny for ticker: {}",
+                //             ticker.ticker
+                //         );
+                //         ""
+                //     })
+                //     .trim_matches('"')
+                //     .to_string();
 
-                    let series_metadata = OhlcvMetaData {
-                        metadata_collection_name: ticker_exchange.3.to_string(),
-                        ticker: ticker_exchange.0.to_string(),
-                        source: "eod".to_string(),
-                        exchange: ticker_exchange.1.to_string(),
-                        isin: Some(isin_value),
-                        currency: Some(ticker_denomination),
-                    };
+                // let series_metadata = OhlcvMetaData {
+                //     metadata_collection_name: ticker.series_collection_name.to_string(),
+                //     ticker: ticker.ticker.to_string(),
+                //     source: "eod".to_string(),
+                //     exchange: ticker.exchange.to_string(),
+                //     isin: Some(isin_value),
+                //     currency: Some(ticker_denomination),
+                // };
 
-                    metadata_vec.push(series_metadata);
-                }
+                let series_metadata = OhlcvMetaData {
+                    metadata_collection_name: ticker.series_collection_name.to_string(),
+                    ticker: ticker.ticker.to_string(),
+                    source: "eod".to_string(),
+                    exchange: ticker.exchange.to_string(),
+                    isin: None,
+                    currency: None,
+                };
+
+                Ok(series_metadata)
             }
         }
-        Ok(metadata_vec)
     }
 
     pub async fn batch_get_series_all(
         &self,
-        tickers: &[&(&str, &str, &str, &str, &str)], // (ticker, exchange, start_date, collection_name, api)
+        tickers: Vec<MongoTickerParams>,
     ) -> Result<Vec<DataFrame>> {
         let mut urls = Vec::new();
-        for ticker in tickers.iter() {
+        for ticker in tickers.clone().into_iter() {
             let end_date = get_current_date_string();
-            let granularity = ticker.3.chars().last();
+            let granularity = ticker.series_collection_name.chars().last();
             match granularity {
                 Some('d') => {
+                    let from_date = &ticker.from.to_string()[..10];
                     let url = format!(
                         "https://eodhistoricaldata.com/api/eod/{}.{}?api_token={}&fmt=json&from={}&to={}",
-                        ticker.0, ticker.1, self.api_token, ticker.2, end_date
+                        ticker.ticker, ticker.exchange, self.api_token, from_date, end_date
                     );
                     urls.push(url);
                 }
                 Some('h') | Some('m') => {
-                    // let start_date_timestamp = string_to_timestamp("1970-01-01");
-                    // let end_date_timestamp = string_to_timestamp("1970-03-01");
-                    let start_date_timestamp = string_to_timestamp(ticker.2);
+                    let start_date_timestamp = ticker.from.timestamp_millis();
                     let end_date_timestamp = get_current_timestamp();
-                    let collection_name_split = ticker.3.split('_').collect::<Vec<&str>>();
+                    let collection_name_split = ticker
+                        .series_collection_name
+                        .split('_')
+                        .collect::<Vec<&str>>();
                     let interval = collection_name_split.last().expect(
                         "batch_get_series_all() failed to get interval from collection_name",
                     );
                     let url = format!(
                         "https://eodhistoricaldata.com/api/intraday/{}.{}?api_token={}&interval={}&fmt=json&from={}&to={}",
-                        ticker.0, ticker.1, self.api_token, interval, start_date_timestamp, end_date_timestamp
+                        ticker.ticker, ticker.exchange, self.api_token, interval, start_date_timestamp, end_date_timestamp
                     );
                     urls.push(url);
                 }
                 Some('e') => {
                     let url = format!(
                         "https://eodhistoricaldata.com/api/real-time/{}.{}?api_token={}&fmt=json",
-                        ticker.0, ticker.1, self.api_token,
+                        ticker.ticker, ticker.exchange, self.api_token,
                     );
                     urls.push(url);
                 }
                 _ => log::error!(
                     "batch_get_series_all() Could not parse granularity for: {}",
-                    ticker.0
+                    ticker.ticker
                 ),
             }
         }
@@ -190,10 +196,17 @@ impl EodApi {
             .into_iter()
             .collect();
 
-        let dfs = async_http_request(self.client.clone(), urls_unique).await?;
-        let metadatas = self.batch_get_metadata(tickers).await?;
-        // assert_eq!(dfs.len() == metadatas.len());
-        let dfs_with_metadata = add_metadata_to_df(dfs, metadatas).await?;
+        let dfs = async_http_request(self.client.clone(), urls_unique)
+            .await
+            .expect("batch_get_series_all() failed to get response from async_http_request()");
+
+        let mut dfs_with_metadata = Vec::new();
+        for (mut df, ticker) in dfs.into_iter().zip(tickers.into_iter()) {
+            let metadata = self.get_metadata(ticker)?;
+            let series = Series::new("metadata", vec![to_string(&metadata)?; df.height()]);
+            df.with_column(series)?;
+            dfs_with_metadata.push(df);
+        }
 
         Ok(dfs_with_metadata)
     }
@@ -205,10 +218,10 @@ impl EodApi {
 //     tickers_exchanges: Vec<(&str, &str)>,
 // ) -> Result<Vec<DataFrame>> {
 //     let mut urls = Vec::new();
-//     tickers_exchanges.iter().for_each(|ticker_exchange| {
+//     tickers_exchanges.iter().for_each(|ticker| {
 //         let url = format!(
 //             "https://eodhistoricaldata.com/api/fundamentals/{}.{}?api_token={}&fmt=json",
-//             ticker_exchange.0, ticker_exchange.1, self.api_token,
+//             ticker.ticker, ticker_exchange.1, self.api_token,
 //         );
 //         urls.push(url);
 //     });
@@ -224,17 +237,17 @@ impl EodApi {
 // ) -> Result<Vec<DataFrame>> {
 // let end_date = get_current_date_string();
 // let mut urls = Vec::new();
-// tickers_exchanges.iter().for_each(|ticker_exchange| {
+// tickers_exchanges.iter().for_each(|ticker| {
 // let url = format!(
 // "https://eodhistoricaldata.com/api/eod/{}.{}?api_token={}&fmt=json&from={}&to={}",
-// ticker_exchange.0, ticker_exchange.1, self.api_token, ticker_exchange.2, end_date
+// ticker.ticker, ticker_exchange.1, self.api_token, ticker_exchange.2, end_date
 // );
 // urls.push(url);
 // });
 
 // let tickers_exchanges_trunc: Vec<(&str, &str)> = tickers_exchanges
 // .iter()
-// .map(|ticker_exchange| (ticker_exchange.0, ticker_exchange.1))
+// .map(|ticker| (ticker_exchange.0, ticker_exchange.1))
 // .collect();
 
 // let response_vec_api = async_http_request(self.client.clone(), urls).await?;
@@ -252,15 +265,15 @@ impl EodApi {
 // let mut urls = Vec::new();
 // tickers_exchanges
 // .iter()
-// .for_each(|ticker_exchange| {
-// let start_date_timestamp = string_to_timestamp(ticker_exchange.2);
+// .for_each(|ticker| {
+// let start_date_timestamp = string_to_timestamp(ticker.2);
 // let end_date_timestamp = get_current_timestamp();
 // let url = format!(
 // "https://eodhistoricaldata.com/api/intraday/{}.{}?api_token={}&interval={}&fmt=json&from={}&to={}",
-// ticker_exchange.0,
-// ticker_exchange.1,
+// ticker.ticker,
+// ticker.exchange,
 // self.api_token,
-// ticker_exchange.3,
+// ticker.series_collection_name,
 // start_date_timestamp,
 // end_date_timestamp
 // );
@@ -269,7 +282,7 @@ impl EodApi {
 
 // let tickers_exchanges_new: Vec<(&str, &str)> = tickers_exchanges
 // .iter()
-// .map(|ticker_exchange| (ticker_exchange.0, ticker_exchange.1))
+// .map(|ticker| (ticker_exchange.0, ticker_exchange.1))
 // .collect();
 
 // let response_vec_intraday_data = async_http_request(self.client.clone(), urls).await?;
@@ -285,10 +298,10 @@ impl EodApi {
 // tickers_exchanges: Vec<(&str, &str)>, // (ticker, exchange)
 // ) -> Result<Vec<DataFrame>> {
 // let mut urls = Vec::new();
-// tickers_exchanges.iter().for_each(|ticker_exchange| {
+// tickers_exchanges.iter().for_each(|ticker| {
 // let url = format!(
 // "https://eodhistoricaldata.com/api/real-time/{}.{}?api_token={}&fmt=json",
-// ticker_exchange.0, ticker_exchange.1, self.api_token,
+// ticker.ticker, ticker_exchange.1, self.api_token,
 // );
 // urls.push(url);
 // });
