@@ -3,17 +3,12 @@ use dotenv::dotenv;
 use polars::frame::DataFrame;
 use polars::prelude::*;
 use reqwest::Client;
-use serde_json::{to_string, Value};
-use std::io::Cursor;
-use std::{
-    collections::{HashMap, HashSet},
-    env,
-};
+use serde_json::to_string;
+use std::{collections::HashMap, env};
 
 use crate::models::eod_models::{MongoTickerParams, OhlcvMetaData};
 use crate::utility_functions::{
-    add_metadata_to_df, async_http_request, get_current_date_string, get_current_timestamp,
-    string_to_timestamp,
+    async_http_request, get_current_date_string, get_current_datetime_bson, get_timestamps_tuple,
 };
 
 pub struct EodApi {
@@ -158,30 +153,32 @@ impl EodApi {
                         "https://eodhistoricaldata.com/api/eod/{}.{}?api_token={}&fmt=json&from={}&to={}",
                         ticker.ticker, ticker.exchange, self.api_token, from_date, end_date
                     );
-                    urls.push(url);
+                    urls.push((ticker, url));
                 }
                 Some('h') | Some('m') => {
-                    let start_date_timestamp = ticker.from.timestamp_millis();
-                    let end_date_timestamp = get_current_timestamp();
-                    let collection_name_split = ticker
+                    let end_date = get_current_datetime_bson();
+                    let collection_name_split = &ticker
                         .series_collection_name
                         .split('_')
                         .collect::<Vec<&str>>();
                     let interval = collection_name_split.last().expect(
                         "batch_get_series_all() failed to get interval from collection_name",
                     );
-                    let url = format!(
-                        "https://eodhistoricaldata.com/api/intraday/{}.{}?api_token={}&interval={}&fmt=json&from={}&to={}",
-                        ticker.ticker, ticker.exchange, self.api_token, interval, start_date_timestamp, end_date_timestamp
-                    );
-                    urls.push(url);
+                    let timestamps_tuple = get_timestamps_tuple(ticker.from, end_date, interval)?;
+                    for (from, to) in timestamps_tuple.iter() {
+                        let url = format!(
+                            "https://eodhistoricaldata.com/api/intraday/{}.{}?api_token={}&interval={}&fmt=json&from={}&to={}",
+                            ticker.ticker, &ticker.exchange, self.api_token, interval, from, to
+                        );
+                        urls.push((ticker.clone(), url));
+                    }
                 }
                 Some('e') => {
                     let url = format!(
                         "https://eodhistoricaldata.com/api/real-time/{}.{}?api_token={}&fmt=json",
                         ticker.ticker, ticker.exchange, self.api_token,
                     );
-                    urls.push(url);
+                    urls.push((ticker, url));
                 }
                 _ => log::error!(
                     "batch_get_series_all() Could not parse granularity for: {}",
@@ -190,19 +187,18 @@ impl EodApi {
             }
         }
 
-        let urls_unique: Vec<_> = urls
-            .into_iter()
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
+        let mut urls_unique = HashMap::new();
+        for (params, url) in urls.into_iter() {
+            urls_unique.entry(url).or_insert(params);
+        }
 
         let dfs = async_http_request(self.client.clone(), urls_unique)
             .await
             .expect("batch_get_series_all() failed to get response from async_http_request()");
 
         let mut dfs_with_metadata = Vec::new();
-        for (mut df, ticker) in dfs.into_iter().zip(tickers.into_iter()) {
-            let metadata = self.get_metadata(ticker)?;
+        for (param, mut df) in dfs.into_iter() {
+            let metadata = self.get_metadata(param)?;
             let series = Series::new("metadata", vec![to_string(&metadata)?; df.height()]);
             df.with_column(series)?;
             dfs_with_metadata.push(df);
@@ -223,7 +219,7 @@ impl EodApi {
 //             "https://eodhistoricaldata.com/api/fundamentals/{}.{}?api_token={}&fmt=json",
 //             ticker.ticker, ticker_exchange.1, self.api_token,
 //         );
-//         urls.push(url);
+//         urls.push((ticker, url));
 //     });
 
 //     let response_vec_fundamental_data = self.async_http_request(urls).await?;
@@ -242,7 +238,7 @@ impl EodApi {
 // "https://eodhistoricaldata.com/api/eod/{}.{}?api_token={}&fmt=json&from={}&to={}",
 // ticker.ticker, ticker_exchange.1, self.api_token, ticker_exchange.2, end_date
 // );
-// urls.push(url);
+// urls.push((ticker, url));
 // });
 
 // let tickers_exchanges_trunc: Vec<(&str, &str)> = tickers_exchanges
@@ -277,7 +273,7 @@ impl EodApi {
 // start_date_timestamp,
 // end_date_timestamp
 // );
-// urls.push(url);
+// urls.push((ticker, url));
 // });
 
 // let tickers_exchanges_new: Vec<(&str, &str)> = tickers_exchanges
@@ -303,7 +299,7 @@ impl EodApi {
 // "https://eodhistoricaldata.com/api/real-time/{}.{}?api_token={}&fmt=json",
 // ticker.ticker, ticker_exchange.1, self.api_token,
 // );
-// urls.push(url);
+// urls.push((ticker, url));
 // });
 
 // let response_vec_live_lagged_data = async_http_request(self.client.clone(), urls).await?;

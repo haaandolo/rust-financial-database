@@ -12,7 +12,7 @@ chrono = { version = "0.4.31", features = ["serde"]}
 mongodb = {version = "2.3.1", features = ["bson-chrono-0_4"]}
 bson = { version = "2", features = ["chrono-0_4"] }
 serde_json = "1.0.107"
-polars = { version = "0.35.2", features = ["lazy", "json", "serde", "ndarray", "strings", "dtype-datetime", "rows"]}
+polars = { version = "0.36.2", features = ["lazy", "json", "serde", "ndarray", "strings", "dtype-datetime", "rows"]}
 log = "0.4.20"
 env_logger = "0.10.0"
 futures = "0.3"

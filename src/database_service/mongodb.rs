@@ -1,23 +1,22 @@
 use anyhow::Result;
 use bson::{doc, Bson, Document};
-use chrono::Utc;
 use dotenv::dotenv;
-use futures::TryStreamExt;
+use futures::{TryStreamExt, StreamExt};
 use mongodb::{
     bson,
     options::{
         CreateCollectionOptions, FindOptions, TimeseriesGranularity, TimeseriesOptions,
-        UpdateOptions, FindOneOptions
+        FindOneOptions
     },
     Client,
 };
 use polars::prelude::*;
 use std::collections::{HashMap, HashSet};
-use std::{rc::Rc, env};
+use std::env;
 
 
 use crate::data_apis::EodApi;
-use crate::models::eod_models::{OhlcvMetaData, TimeseriesMetaDataStruct, MongoTickerParams, Ohlcv};
+use crate::models::eod_models::{OhlcvMetaData, TimeseriesMetaDataStruct, MongoTickerParams, ReadSeriesFromMongoDb};
 use crate::utility_functions::{get_current_datetime_bson, string_to_datetime, has_business_day_between};
 
 pub struct MongoDbClient {
@@ -167,10 +166,6 @@ impl MongoDbClient {
         Ok(dfs)
     }
 
-    // pub async fn read_series(&self, tickers: Vec<(&str, &str, &str, &str, &str)>) -> Result<()> {
-    //     Ok(())
-    // }
-
     pub async fn insert_series(&self, dfs: Vec<DataFrame>) -> Result<bool> {
         // iterate through each df
         for df in dfs.iter() {
@@ -196,15 +191,15 @@ impl MongoDbClient {
                         ("volume", Some(AnyValue::Int64(number))) => {
                             doc_row.insert(name.to_string(), *number);
                         }
-                        ("datetime", Some(AnyValue::Utf8(string))) => {
+                        ("datetime", Some(AnyValue::String(string))) => {
                             let datetime = string_to_datetime(string);
                             doc_row.insert(name.to_string(), Bson::DateTime(datetime));
                         }
-                        ("date", Some(AnyValue::Utf8(string))) => {
+                        ("date", Some(AnyValue::String(string))) => {
                             let date = string_to_datetime(string);
                             doc_row.insert("datetime".to_string(), Bson::DateTime(date));
                         }
-                        ("metadata", Some(AnyValue::Utf8(string))) => {
+                        ("metadata", Some(AnyValue::String(string))) => {
                             let metadata: OhlcvMetaData =
                                 serde_json::from_str(string).expect("Could not parse metadata!");
                             let metadata_bson = bson::to_bson(&metadata)
@@ -223,7 +218,7 @@ impl MongoDbClient {
             let metadata = metadata.as_document().expect("Metadata is not a document!");
             let collection_name = metadata.get("metadata_collection_name").expect("Could not get metadata_collection_name!");
             let collection_name = collection_name.as_str().expect("Could not convert metadata_collection_name to string!"); 
-
+            
             let collection = self
                 .client
                 .clone()
@@ -236,7 +231,7 @@ impl MongoDbClient {
         Ok(true)
     }
 
-    pub async fn update_metadata_dates(&self, tickers: &[MongoTickerParams]) -> Result<()> {
+    pub async fn update_metadata_dates(&self, tickers: &[MongoTickerParams]) -> Result<bool> {
         let metadata_db = self.client.clone().database(&self.db_metadata_name);
         let series_db = self.client.clone().database(&self.db_name);
         for ticker in tickers.iter() {
@@ -266,6 +261,7 @@ impl MongoDbClient {
                 };
 
                 let mut min_max_dates = HashMap::new();
+
                 // get max date
                 let series_collection = series_db.collection::<Document>(&metadata.series_collection_name);
                 let max_date_options= FindOneOptions::builder().sort(doc! { "datetime": -1 }).build();
@@ -298,9 +294,64 @@ impl MongoDbClient {
                 .await?;
             }
         }  
-        Ok(())
+        Ok(true)
     }
 
+    pub async fn read_series(&self, tickers: Vec<MongoTickerParams>) -> Result<Vec<(String, DataFrame)>> {
+        let series_db = self.client.clone().database(&self.db_name);
+        let mut dfs = Vec::new();
+        for ticker in tickers.iter() {
+            let ticker_collection = series_db.collection::<Document>(&ticker.series_collection_name);
+            let ticker_filter = doc! {
+                "metadata.ticker": &ticker.ticker,
+                "metadata.exchange": &ticker.exchange,
+                "metadata.metadata_collection_name": &ticker.series_collection_name,
+                "metadata.source": &ticker.source,
+                "datetime": {
+                    "$gte": ticker.from,
+                    "$lte": ticker.to
+                }
+            };
+
+            let options = FindOptions::builder()
+                .sort(doc! { "datetime": 1 })
+                .build();
+
+            let mut cursor = ticker_collection.find(ticker_filter, options)
+                .await
+                .expect("Failed to unwrap Ohlcv Cursor, check filter condition is valid");
+
+            let mut ohlcv_vec = Vec::new();
+            while let Some(result) = cursor.next().await {
+                match result {
+                    Ok(document) => {
+                        let ohlcv_row: ReadSeriesFromMongoDb = bson::from_bson(Bson::Document(document)).unwrap();
+                        ohlcv_vec.push(ohlcv_row);
+                    }
+                    Err(e) => println!("Error: {}", e),
+                }
+            }
+
+            let datetime: Series = Series::new("datetime", ohlcv_vec.iter().map(|s| {
+                let datetime = s.datetime;
+                let datetime = chrono::DateTime::<chrono::Utc>::from(datetime);
+                datetime.to_rfc3339()
+            }).collect::<Vec<_>>());
+            let open: Series = Series::new("open", ohlcv_vec.iter().map(|s| s.open).collect::<Vec<_>>());
+            let high: Series = Series::new("high", ohlcv_vec.iter().map(|s| s.high).collect::<Vec<_>>());
+            let low: Series = Series::new("low", ohlcv_vec.iter().map(|s| s.low).collect::<Vec<_>>());
+            let close: Series = Series::new("close", ohlcv_vec.iter().map(|s| s.close).collect::<Vec<_>>());
+            let adjusted_close: Series = Series::new("adjusted_close", ohlcv_vec.iter().map(|s| s.adjusted_close).collect::<Vec<_>>());
+            let volume: Series = Series::new("volume", ohlcv_vec.iter().map(|s| s.volume).collect::<Vec<_>>());
+
+            let df = DataFrame::new(vec![datetime, open, high, low, close, volume, adjusted_close]).unwrap();
+            dfs.push((ticker.ticker.to_owned(), df));
+        }
+
+        Ok(dfs)
+    }
+
+    
     pub async fn run(&self, tickers: Vec<(&str, &str, &str, &str, &str, &str)>) -> Result<()> {
         // convert str to mongodb params
         let tickers = tickers.into_iter()
@@ -313,7 +364,6 @@ impl MongoDbClient {
                 to: string_to_datetime(to),
             })
             .collect::<Vec<MongoTickerParams>>();
-        let tickers = Rc::new(tickers);
 
         // ensure collection exits
         let ensure_collection_exists = self.ensure_series_collection_exists(&tickers).await?;
@@ -388,9 +438,12 @@ impl MongoDbClient {
         self.insert_series(dfs_existing).await?;
 
         // update metadata dates
-        self.update_metadata_dates(&tickers).await?;
+        let metadata_update = self.update_metadata_dates(&tickers).await?;
+        assert!(metadata_update, "update_metadata_dates() failed!");
 
         // read series
+        let dfs = self.read_series(tickers).await?;
+        println!("{:#?}", dfs);
 
         Ok(())
     }

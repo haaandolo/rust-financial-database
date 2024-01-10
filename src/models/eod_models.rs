@@ -64,3 +64,16 @@ pub struct MongoTickerParams {
     pub from: DateTime,
     pub to: DateTime,
 }
+
+
+#[derive(Debug, Serialize, Deserialize, Clone, Iterable)]
+pub struct ReadSeriesFromMongoDb {
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
+    pub adjusted_close: Option<f64>,
+    pub volume: Option<i64>,
+    pub datetime: DateTime,
+    pub metadata: OhlcvMetaData,
+}

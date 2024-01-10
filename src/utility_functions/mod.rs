@@ -6,9 +6,9 @@ use mongodb::bson;
 use polars::prelude::*;
 use reqwest::Client;
 use serde_json::to_string;
-use std::io::Cursor;
+use std::{io::Cursor, collections::HashMap};
 
-use crate::models::eod_models::OhlcvMetaData;
+use crate::models::eod_models::{OhlcvMetaData, MongoTickerParams};
 
 /*------------------------------ DATE UTILITY FUNCTIONS ------------------------------*/
 pub fn string_to_datetime(date: &str) -> bson::DateTime {
@@ -77,27 +77,62 @@ pub fn has_business_day_between(date1: BsonDateTime, date2: BsonDateTime) -> boo
     true
 }
 
+pub fn get_timestamps_tuple(
+    from: BsonDateTime,
+    to: BsonDateTime,
+    granularity: &str,
+) -> Result<Vec<(i64, i64)>> {
+    let mut duration = 0;
+    match granularity.chars().last().unwrap() {
+        'm' => duration = 120,
+        'h' => duration = 350, // CHANGE TO 7200 ONCE ON PAID
+        _ => eprintln!("Invalid granularity"),
+    }
+
+    let start_date: DateTime<Utc> = from.into();
+    let end_date: DateTime<Utc> = to.into();
+    let mut current_date = start_date;
+
+    let mut date_tuples = Vec::new();
+    while current_date < end_date {
+        let next_date = current_date + Duration::days(duration);
+        if next_date > end_date {
+            break;
+        }
+        let current_date_timestamp = current_date.timestamp();
+        let next_date_timestamp = (next_date - Duration::seconds(1)).timestamp();
+        date_tuples.push((current_date_timestamp, next_date_timestamp));
+        current_date = next_date;
+    }
+
+    Ok(date_tuples)
+}
+
 /*------------------------------ NETWORK UTILITY FUNCTIONS ------------------------------*/
-pub async fn async_http_request(client: Client, urls: Vec<String>) -> Result<Vec<DataFrame>> {
-    let bodies = future::join_all(urls.into_iter().map(|url| {
+pub async fn async_http_request(client: Client, urls: HashMap<String, MongoTickerParams>) -> Result<Vec<(MongoTickerParams, DataFrame)>> {
+    let bodies = future::join_all(urls.into_iter().map(|(url, param)| {
         let client = client.clone();
         async move {
-            let resp = client.get(url).send().await?;
-            resp.bytes().await
+            let resp = client.get(url).send().await.unwrap();
+            let result = resp.bytes().await;
+            (param, result)
         }
     }))
     .await;
 
     let mut response_vec = Vec::new();
-    for body in bodies {
+    for (param, body) in bodies {
         match body {
             Ok(body) => {
-                let body_string = String::from_utf8_lossy(&body).to_string();
-                let cursor = Cursor::new(body_string);
-                let df = JsonReader::new(cursor)
-                    .finish()
-                    .expect("async_http_request() failed to read Cursor to Dataframe");
-                response_vec.push(df);
+                let body_string = String::from_utf8_lossy(&body).into_owned();
+                if body_string != "[]" {
+                    let cursor = Cursor::new(body_string);
+                    let df = JsonReader::new(cursor).finish();
+                    match df {
+                        Ok(df) => response_vec.push((param, df)),
+                        Err(e)=> eprintln!("async_http_request() Could not parse response to DataFrame: {}", e),
+                    }
+                }
             }
             Err(e) => eprintln!("Got an error: {}", e),
         }
