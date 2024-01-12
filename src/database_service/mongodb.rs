@@ -429,11 +429,10 @@ impl MongoDbClient {
             }
         }
 
-        // for new tickers, create metadata and get data and insert into db
+        // insert series rows to db for new and old tickers
         let dfs_new = self.get_data_from_apis(new_tickers).await?;
         self.insert_series(dfs_new).await?;
 
-        // for existing tickers, update metadata and get data and insert into db
         let dfs_existing = self.get_data_from_apis(existing_tickers).await?;
         self.insert_series(dfs_existing).await?;
 
@@ -441,7 +440,7 @@ impl MongoDbClient {
         let metadata_update = self.update_metadata_dates(&tickers).await?;
         assert!(metadata_update, "update_metadata_dates() failed!");
 
-        // read series
+        // read series based on dates provided
         let dfs = self.read_series(tickers).await?;
         println!("{:#?}", dfs);
 
