@@ -20,6 +20,7 @@ impl EodApi {
     pub async fn new() -> Self {
         dotenv().ok();
         let eod_api_token = env::var("API_TOKEN").expect("Failed tp parse API_TOKEN from .env");
+        log::info!("Established Client for EOD API");
         Self {
             client: Client::new(),
             api_token: eod_api_token,
@@ -36,6 +37,10 @@ impl EodApi {
                     exchange: ticker.exchange.to_string(),
                     currency: None,
                 };
+                log::info!(
+                    "batch_get_metadata() retrieving metadata for: {}",
+                    ticker.ticker
+                );
                 Ok(series_metadata)
             }
             "CC" => {
@@ -46,6 +51,10 @@ impl EodApi {
                     exchange: ticker.exchange.to_string(),
                     currency: None,
                 };
+                log::info!(
+                    "batch_get_metadata() retrieving metadata for: {}",
+                    ticker.ticker
+                );
                 Ok(series_metadata)
             }
             "BOND" => {
@@ -56,6 +65,10 @@ impl EodApi {
                     exchange: ticker.exchange.to_string(),
                     currency: None,
                 };
+                log::info!(
+                    "batch_get_metadata() retrieving metadata for: {}",
+                    ticker.ticker
+                );
                 Ok(series_metadata)
             }
             "FOREX" => {
@@ -66,6 +79,10 @@ impl EodApi {
                     exchange: ticker.exchange.to_string(),
                     currency: None,
                 };
+                log::info!(
+                    "batch_get_metadata() retrieving metadata for: {}",
+                    ticker.ticker
+                );
                 Ok(series_metadata)
             }
             _ => {
@@ -113,7 +130,10 @@ impl EodApi {
                     exchange: ticker.exchange.to_string(),
                     currency: None,
                 };
-
+                log::info!(
+                    "batch_get_metadata() retrieving metadata for: {}",
+                    ticker.ticker
+                );
                 Ok(series_metadata)
             }
         }
@@ -125,19 +145,24 @@ impl EodApi {
     ) -> Result<Vec<DataFrame>> {
         let mut urls = Vec::new();
         for ticker in tickers.clone().into_iter() {
-            let end_date = get_current_date_string();
+            let end_date_string = get_current_date_string();
             let granularity = ticker.series_collection_name.chars().last();
+            log::info!(
+                "batch_get_series_all() making url for: {} belonging to collection {}",
+                ticker.ticker,
+                ticker.series_collection_name
+            );
             match granularity {
                 Some('d') => {
                     let from_date = &ticker.from.to_string()[..10];
                     let url = format!(
                         "https://eodhistoricaldata.com/api/eod/{}.{}?api_token={}&fmt=json&from={}&to={}",
-                        ticker.ticker, ticker.exchange, self.api_token, from_date, end_date
+                        ticker.ticker, ticker.exchange, self.api_token, from_date, end_date_string
                     );
                     urls.push((ticker, url));
                 }
                 Some('h') | Some('m') => {
-                    let end_date = get_current_datetime_bson();
+                    let end_date_datetime = get_current_datetime_bson();
                     let collection_name_split = &ticker
                         .series_collection_name
                         .split('_')
@@ -145,7 +170,8 @@ impl EodApi {
                     let interval = collection_name_split.last().expect(
                         "batch_get_series_all() failed to get interval from collection_name",
                     );
-                    let timestamps_tuple = get_timestamps_tuple(ticker.from, end_date, interval)?;
+                    let timestamps_tuple =
+                        get_timestamps_tuple(ticker.from, end_date_datetime, interval)?;
                     for (from, to) in timestamps_tuple.iter() {
                         let url = format!(
                             "https://eodhistoricaldata.com/api/intraday/{}.{}?api_token={}&interval={}&fmt=json&from={}&to={}",
@@ -173,9 +199,7 @@ impl EodApi {
             urls_unique.entry(url).or_insert(params);
         }
 
-        let dfs = async_http_request(self.client.clone(), urls_unique)
-            .await
-            .expect("batch_get_series_all() failed to get response from async_http_request()");
+        let dfs = async_http_request(self.client.clone(), urls_unique).await?;
 
         let mut dfs_with_metadata = Vec::new();
         for (param, mut df) in dfs.into_iter() {
@@ -184,7 +208,7 @@ impl EodApi {
             df.with_column(series)?;
             dfs_with_metadata.push(df);
         }
-
+        log::info!("batch_get_series_all() successfully retrieved all dataframes from EOD");
         Ok(dfs_with_metadata)
     }
 }

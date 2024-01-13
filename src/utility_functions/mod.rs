@@ -99,6 +99,7 @@ pub async fn async_http_request(
     let bodies = future::join_all(urls.into_iter().map(|(url, param)| {
         let client = client.clone();
         async move {
+            log::info!("async_http_request() fetching url: {}", url);
             let resp = client.get(url).send().await.unwrap();
             let result = resp.bytes().await;
             (param, result)

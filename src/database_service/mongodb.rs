@@ -48,6 +48,10 @@ impl MongoDbClient {
         &self,
         collection_name: &str,
     ) -> Result<bool> {
+        log::info!(
+            "Creating timeseries collection: {}",
+            &collection_name
+        );
         let series_db = self.client.clone().database(&self.db_name);
         let timeseries_options = TimeseriesOptions::builder()
             .time_field("datetime".to_string())
@@ -64,21 +68,17 @@ impl MongoDbClient {
             .build();
         series_db
             .create_collection(&collection_name, Some(options))
-            .await
-            .expect("Failed to create timeseries collection");
-        log::info!(
-            "Sucessfully created timeseries collection: {}",
-            &collection_name
-        );
+            .await?;
+
         Ok(true)
     }
 
     pub async fn create_metadata_collection(&self, collection_name: &str) -> Result<bool> {
+        log::info!("Creating metadata collection: {}", &collection_name);
         let metadata_db = self.client.clone().database(&self.db_metadata_name);
         metadata_db
             .create_collection(&collection_name, None)
-            .await
-            .expect("Failed to create metadata collection");
+            .await?;
         Ok(true)
     }
 
@@ -86,8 +86,12 @@ impl MongoDbClient {
         &self,
         ticker: &MongoTickerParams,
     ) -> Result<TimeseriesMetaDataStruct> {
-        let metadata_db = self.client.clone().database(&self.db_metadata_name);
-        let collection = metadata_db.collection(&ticker.series_collection_name);
+        log::info!("Inserting metadata for: {} into collection {}", &ticker.ticker, &ticker.series_collection_name);
+        let collection = self.client
+            .clone()
+            .database(&self.db_metadata_name)
+            .collection(&ticker.series_collection_name);
+
         let current_date = get_current_datetime_bson();
         let start_date = string_to_datetime("1970-01-01");
         let metadata = TimeseriesMetaDataStruct {
@@ -102,8 +106,7 @@ impl MongoDbClient {
 
         collection
             .insert_one(metadata.clone(), None)
-            .await
-            .expect("Could not insert metadata into MongoDB!");
+            .await?;
 
         Ok(metadata)
     }
@@ -114,15 +117,17 @@ impl MongoDbClient {
     ) -> Result<bool> {
         let metadata_db = self.client.clone().database(&self.db_metadata_name);
         for ticker in tickers.iter() {
+            log::info!("Ensuring collection exists for ticker {} and collection {}",&ticker.ticker, &ticker.series_collection_name);
             let metadata_names = metadata_db.list_collection_names(None).await?;
             let collection_name = &ticker.series_collection_name;
             match metadata_names.contains(collection_name) {
                 true => (),
                 false => {
-                    self.create_series_collection(collection_name)
-                        .await.unwrap_or_else(|_| panic!("Could not create collection: {} for {}", collection_name, ticker.ticker));
-                    self.create_metadata_collection(collection_name).await
-                        .unwrap_or_else(|_| panic!("Could not create metadata collection: {} for {}", collection_name, ticker.ticker));
+                    let series_collection = self.create_series_collection(collection_name).await?;
+                    assert!(series_collection, "ensure_series_collection_exists() failed!");
+
+                    let metadata_collection = self.create_metadata_collection(collection_name).await?;
+                    assert!(metadata_collection, "ensure_series_collection_exists() failed!");
                 }
             }
         }
@@ -136,6 +141,7 @@ impl MongoDbClient {
         // sort tickers by api source (eod, binance, etc.). Output will be a tuple: ("eod", Vec<MongoTickerParams>)
         let mut sorted_tickers = Vec::new();
         let datasource_apis: HashSet<&String> = tickers.iter().map(|tuple| &tuple.source).collect();
+        log::info!("get_data_from_apis() sorting ticker by datasource");
         for datasource in datasource_apis.iter() {
             let filtered_tickers = tickers
                 .iter()
@@ -155,8 +161,8 @@ impl MongoDbClient {
                 ("eod", _) => {
                     let eod_client = EodApi::new().await;
                     let ticker_infos = datasource.1;
-                    let eod_dfs = eod_client.batch_get_series_all(ticker_infos).await
-                        .expect("get_data_from_apis() Could not get data from EOD API!");
+                    let eod_dfs = eod_client.batch_get_series_all(ticker_infos).await?;
+                    log::info!("get_data_from_apis() Sucessfully retrieved data from EOD API!");
                     dfs.extend(eod_dfs);
                 }
                 _ => log::error!("Datasource: {} is not supported!", datasource.0),
@@ -201,15 +207,13 @@ impl MongoDbClient {
                         }
                         ("metadata", Some(AnyValue::String(string))) => {
                             let metadata: OhlcvMetaData =
-                                serde_json::from_str(string).expect("Could not parse metadata!");
-                            let metadata_bson = bson::to_bson(&metadata)
-                                .expect("Could not convert metadata to Bson!");
+                                serde_json::from_str(string)?;
+                            let metadata_bson = bson::to_bson(&metadata)?;
                             doc_row.insert(name.to_string(), metadata_bson);
                         }
-                        _ => log::error!("insert_series() Could not parse column!"),
+                        _ => ()// log::error!("insert_series() Could not parse column!"),
                     }
                 }
-                // if document row datetime is greater than metadata datetime, push row to doc_vec
                 doc_vec.push(doc_row);
             }
 
@@ -224,8 +228,7 @@ impl MongoDbClient {
                 .clone()
                 .database(&self.db_name)
                 .collection::<Document>(collection_name);
-            collection.insert_many(doc_vec, None).await
-                .expect("insert_many() failed at inserting docs into collection");
+            collection.insert_many(doc_vec, None).await?;
         }
 
         Ok(true)
@@ -235,51 +238,42 @@ impl MongoDbClient {
         let metadata_db = self.client.clone().database(&self.db_metadata_name);
         let series_db = self.client.clone().database(&self.db_name);
         for ticker in tickers.iter() {
+            log::info!("update_metadata_dates() updating metadata for ticker {} in collection {}", &ticker.ticker, &ticker.series_collection_name);
             let metadata_collection = metadata_db.collection::<TimeseriesMetaDataStruct>(&ticker.series_collection_name);
-            let mut series_metadata = metadata_collection
-                .find(None, None)
-                .await?;
+            let series_filter = doc! {
+                "metadata.ticker": &ticker.ticker,
+                "metadata.exchange": &ticker.exchange,
+                "metadata.metadata_collection_name": &ticker.series_collection_name,
+                "metadata.source": &ticker.source,
+            };
 
-            let mut metadata_vec = Vec::new();
-            while let Some(result) = series_metadata.try_next().await? {
-                metadata_vec.push(result);
+            let metadata_filter = doc! {
+                "ticker": &ticker.ticker,
+                "exchange": &ticker.exchange,
+                "series_collection_name": &ticker.series_collection_name,
+                "source": &ticker.source,
+            };
+
+            let mut min_max_dates = HashMap::new();
+
+            // get max date
+            let series_collection = series_db.collection::<Document>(&ticker.series_collection_name);
+            let max_date_options= FindOneOptions::builder().sort(doc! { "datetime": -1 }).build();
+            let max_date_result = series_collection.find_one(Some(series_filter.clone()), max_date_options).await?;
+            if let Some(max_date_row) = max_date_result {
+                let _max_date= max_date_row.get("datetime").expect("Could not get datetime!");
+                min_max_dates.insert("max_date", _max_date.clone());
             }
 
-            for metadata in metadata_vec.iter() {
-                let series_filter = doc! {
-                    "metadata.ticker": &metadata.ticker,
-                    "metadata.exchange": &metadata.exchange,
-                    "metadata.metadata_collection_name": &metadata.series_collection_name,
-                    "metadata.source": &metadata.source,
-                };
+            // get min date
+            let min_date_options= FindOneOptions::builder().sort(doc! { "datetime": 1 }).build();
+            let min_date_result = series_collection.find_one(Some(series_filter), min_date_options).await?;
+            if let Some(min_date_row) = min_date_result {
+                let _min_date = min_date_row.get("datetime").expect("Could not get datetime!");
+                min_max_dates.insert("min_date", _min_date.clone());
+            }
 
-                let metadata_filter = doc! {
-                    "ticker": &metadata.ticker,
-                    "exchange": &metadata.exchange,
-                    "series_collection_name": &metadata.series_collection_name,
-                    "source": &metadata.source,
-                };
-
-                let mut min_max_dates = HashMap::new();
-
-                // get max date
-                let series_collection = series_db.collection::<Document>(&metadata.series_collection_name);
-                let max_date_options= FindOneOptions::builder().sort(doc! { "datetime": -1 }).build();
-                let max_date_result = series_collection.find_one(Some(series_filter.clone()), max_date_options).await?;
-                if let Some(max_date_row) = max_date_result {
-                    let _max_date= max_date_row.get("datetime").expect("Could not get datetime!");
-                    min_max_dates.insert("max_date", _max_date.clone()); // FIX THIS CLONE
-                }
-
-                // get min date
-                let min_date_options= FindOneOptions::builder().sort(doc! { "datetime": 1 }).build();
-                let min_date_result = series_collection.find_one(Some(series_filter), min_date_options).await?;
-                if let Some(min_date_row) = min_date_result {
-                    let _min_date = min_date_row.get("datetime").expect("Could not get datetime!");
-                    min_max_dates.insert("min_date", _min_date.clone()); // FIX THIS CLONE
-                }
-
-                metadata_collection
+            metadata_collection
                 .update_one(
                     metadata_filter,
                     doc! {
@@ -292,7 +286,66 @@ impl MongoDbClient {
                     None,
                 )
                 .await?;
-            }
+
+            /*---------------- UNCOMMENT IF ABOVE LOGIC IS WRONG ------------------- */
+            // let metadata_collection = metadata_db.collection::<TimeseriesMetaDataStruct>(&ticker.series_collection_name);
+            // let mut series_metadata = metadata_collection
+            //     .find(None, None)
+            //     .await?;
+
+            // let mut metadata_vec = Vec::new();
+            // while let Some(result) = series_metadata.try_next().await? {
+            //     metadata_vec.push(result);
+            // }
+
+            // for metadata in metadata_vec.iter() {
+            //     let series_filter = doc! {
+            //         "metadata.ticker": &metadata.ticker,
+            //         "metadata.exchange": &metadata.exchange,
+            //         "metadata.metadata_collection_name": &metadata.series_collection_name,
+            //         "metadata.source": &metadata.source,
+            //     };
+
+            //     let metadata_filter = doc! {
+            //         "ticker": &metadata.ticker,
+            //         "exchange": &metadata.exchange,
+            //         "series_collection_name": &metadata.series_collection_name,
+            //         "source": &metadata.source,
+            //     };
+
+            //     let mut min_max_dates = HashMap::new();
+
+            //     // get max date
+            //     let series_collection = series_db.collection::<Document>(&metadata.series_collection_name);
+            //     let max_date_options= FindOneOptions::builder().sort(doc! { "datetime": -1 }).build();
+            //     let max_date_result = series_collection.find_one(Some(series_filter.clone()), max_date_options).await?;
+            //     if let Some(max_date_row) = max_date_result {
+            //         let _max_date= max_date_row.get("datetime").expect("Could not get datetime!");
+            //         min_max_dates.insert("max_date", _max_date.clone());
+            //     }
+
+            //     // get min date
+            //     let min_date_options= FindOneOptions::builder().sort(doc! { "datetime": 1 }).build();
+            //     let min_date_result = series_collection.find_one(Some(series_filter), min_date_options).await?;
+            //     if let Some(min_date_row) = min_date_result {
+            //         let _min_date = min_date_row.get("datetime").expect("Could not get datetime!");
+            //         min_max_dates.insert("min_date", _min_date.clone());
+            //     }
+
+            //     metadata_collection
+            //     .update_one(
+            //         metadata_filter,
+            //         doc! {
+            //             "$set": {
+            //                 "from": min_max_dates.get("min_date").expect("Could not get max_date!"),
+            //                 "to": min_max_dates.get("max_date").expect("Could not get max_date!"),
+            //                 "last_updated": get_current_datetime_bson(),
+            //             }
+            //         },
+            //         None,
+            //     )
+            //     .await?;
+            // }
         }  
         Ok(true)
     }
@@ -301,6 +354,7 @@ impl MongoDbClient {
         let series_db = self.client.clone().database(&self.db_name);
         let mut dfs = Vec::new();
         for ticker in tickers.iter() {
+            log::info!("read_series() reading series for ticker {} in collection {}", &ticker.ticker, &ticker.series_collection_name);
             let ticker_collection = series_db.collection::<Document>(&ticker.series_collection_name);
             let ticker_filter = doc! {
                 "metadata.ticker": &ticker.ticker,
@@ -318,8 +372,7 @@ impl MongoDbClient {
                 .build();
 
             let mut cursor = ticker_collection.find(ticker_filter, options)
-                .await
-                .expect("Failed to unwrap Ohlcv Cursor, check filter condition is valid");
+                .await?;
 
             let mut ohlcv_vec = Vec::new();
             while let Some(result) = cursor.next().await {
@@ -431,10 +484,12 @@ impl MongoDbClient {
 
         // insert series rows to db for new and old tickers
         let dfs_new = self.get_data_from_apis(new_tickers).await?;
-        self.insert_series(dfs_new).await?;
+        let insert_new_dfs = self.insert_series(dfs_new).await?;
+        assert!(insert_new_dfs, "insert_series() failed!");
 
         let dfs_existing = self.get_data_from_apis(existing_tickers).await?;
-        self.insert_series(dfs_existing).await?;
+        let insert_existing_dfs = self.insert_series(dfs_existing).await?;
+        assert!(insert_existing_dfs, "insert_series() failed!");
 
         // update metadata dates
         let metadata_update = self.update_metadata_dates(&tickers).await?;
