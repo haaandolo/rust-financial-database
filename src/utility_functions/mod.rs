@@ -97,7 +97,7 @@ pub async fn async_http_request(
     urls: HashMap<String, MongoTickerParams>,
 ) -> Result<Vec<(MongoTickerParams, DataFrame)>> {
     let bodies = future::join_all(urls.into_iter().map(|(url, param)| {
-        let client = client.clone();
+        let client = client.clone(); // reqwest doc states cloning client is cheap so leave this
         async move {
             log::info!("async_http_request() fetching url: {}", url);
             let resp = client.get(url).send().await.unwrap();

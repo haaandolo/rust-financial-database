@@ -54,9 +54,7 @@ async fn main() {
     println!("{:#?}", create_collections);
 }
 
-// change variable names to be specific as in future we may need fundamental data or bid ask data
-// logging and error messages
-// get rid of large clones where possible
+
 // documentation
 // write test for reading data
 // optimizations

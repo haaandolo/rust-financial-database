@@ -18,3 +18,7 @@ env_logger = "0.10.0"
 futures = "0.3"
 anyhow = "1.0"
 # rayon = "1.8"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+polars = { version = "0.36.2", features = ["lazy", "temporal", "describe", "json", "parquet", "dtype-datetime"]}

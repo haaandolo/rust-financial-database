@@ -208,6 +208,7 @@ impl EodApi {
             df.with_column(series)?;
             dfs_with_metadata.push(df);
         }
+
         log::info!("batch_get_series_all() successfully retrieved all dataframes from EOD");
         Ok(dfs_with_metadata)
     }

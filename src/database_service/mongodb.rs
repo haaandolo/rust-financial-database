@@ -286,66 +286,6 @@ impl MongoDbClient {
                     None,
                 )
                 .await?;
-
-            /*---------------- UNCOMMENT IF ABOVE LOGIC IS WRONG ------------------- */
-            // let metadata_collection = metadata_db.collection::<TimeseriesMetaDataStruct>(&ticker.series_collection_name);
-            // let mut series_metadata = metadata_collection
-            //     .find(None, None)
-            //     .await?;
-
-            // let mut metadata_vec = Vec::new();
-            // while let Some(result) = series_metadata.try_next().await? {
-            //     metadata_vec.push(result);
-            // }
-
-            // for metadata in metadata_vec.iter() {
-            //     let series_filter = doc! {
-            //         "metadata.ticker": &metadata.ticker,
-            //         "metadata.exchange": &metadata.exchange,
-            //         "metadata.metadata_collection_name": &metadata.series_collection_name,
-            //         "metadata.source": &metadata.source,
-            //     };
-
-            //     let metadata_filter = doc! {
-            //         "ticker": &metadata.ticker,
-            //         "exchange": &metadata.exchange,
-            //         "series_collection_name": &metadata.series_collection_name,
-            //         "source": &metadata.source,
-            //     };
-
-            //     let mut min_max_dates = HashMap::new();
-
-            //     // get max date
-            //     let series_collection = series_db.collection::<Document>(&metadata.series_collection_name);
-            //     let max_date_options= FindOneOptions::builder().sort(doc! { "datetime": -1 }).build();
-            //     let max_date_result = series_collection.find_one(Some(series_filter.clone()), max_date_options).await?;
-            //     if let Some(max_date_row) = max_date_result {
-            //         let _max_date= max_date_row.get("datetime").expect("Could not get datetime!");
-            //         min_max_dates.insert("max_date", _max_date.clone());
-            //     }
-
-            //     // get min date
-            //     let min_date_options= FindOneOptions::builder().sort(doc! { "datetime": 1 }).build();
-            //     let min_date_result = series_collection.find_one(Some(series_filter), min_date_options).await?;
-            //     if let Some(min_date_row) = min_date_result {
-            //         let _min_date = min_date_row.get("datetime").expect("Could not get datetime!");
-            //         min_max_dates.insert("min_date", _min_date.clone());
-            //     }
-
-            //     metadata_collection
-            //     .update_one(
-            //         metadata_filter,
-            //         doc! {
-            //             "$set": {
-            //                 "from": min_max_dates.get("min_date").expect("Could not get max_date!"),
-            //                 "to": min_max_dates.get("max_date").expect("Could not get max_date!"),
-            //                 "last_updated": get_current_datetime_bson(),
-            //             }
-            //         },
-            //         None,
-            //     )
-            //     .await?;
-            // }
         }  
         Ok(true)
     }
@@ -398,14 +338,15 @@ impl MongoDbClient {
             let volume: Series = Series::new("volume", ohlcv_vec.iter().map(|s| s.volume).collect::<Vec<_>>());
 
             let df = DataFrame::new(vec![datetime, open, high, low, close, volume, adjusted_close]).unwrap();
-            dfs.push((ticker.ticker.to_owned(), df));
+            let ticker_collection_name = format!("{}_{}_{}", ticker.ticker, ticker.source, ticker.series_collection_name);
+            dfs.push((ticker_collection_name, df));
         }
 
         Ok(dfs)
     }
 
     
-    pub async fn run(&self, tickers: Vec<(&str, &str, &str, &str, &str, &str)>) -> Result<()> {
+    pub async fn run(&self, tickers: Vec<(&str, &str, &str, &str, &str, &str)>) -> Result<Vec<(String, DataFrame)>> {
         // convert str to mongodb params
         let tickers = tickers.into_iter()
             .map(|(ticker, exchange, collection_name,source, from, to)| MongoTickerParams {
@@ -497,8 +438,101 @@ impl MongoDbClient {
 
         // read series based on dates provided
         let dfs = self.read_series(tickers).await?;
-        println!("{:#?}", dfs);
 
-        Ok(())
+        Ok(dfs)
     }
 }
+
+
+/*---------------------------------- TESTS ---------------------------------- */
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{DateTime, Utc};
+    use std::env;
+    use dotenv::dotenv;
+
+    #[tokio::test]
+    async fn test_run() {
+        /*
+            This test checks the ordering of the dataframes that a retrieved from a
+            api source and the dcouments that are retrieved from mongodb. To test this
+            we retrieve data from eod api and save it as a df. Then we insert the same
+            data into a mongodb mock database and retrieve the data. If the eod df and 
+            mongodb df equal each other, we can be assured that our quant db is working
+            fine. Note for future, if this test passes our data is being stored correctly.
+         */
+
+        // Set mock env variables
+        dotenv().ok();
+        env::set_var("API_TOKEN", "demo");
+        env::set_var("MONGODB_URI", "mongodb://localhost:27017");
+        env::set_var("MONGODB_NAME", "molly_db_mock");
+        env::set_var("MONGODB_METADATA_NAME", "molly_db_metadata_mock");
+
+        // Set parameters
+        let now: DateTime<Utc> = Utc::now();
+        let current_date_string = now.format("%Y-%m-%d").to_string();
+        let user_input_params = vec![("AAPL", "US", "equity_spot_1d", "eod", "1970-01-01", current_date_string.as_str())];
+        let system_params = user_input_params.clone().into_iter()
+        .map(|(ticker, exchange, collection_name,source, from, to)| MongoTickerParams {
+            ticker: ticker.to_string(),
+            exchange: exchange.to_string(),
+            series_collection_name: collection_name.to_string(),
+            source: source.to_string(),
+            from: string_to_datetime(from),
+            to: string_to_datetime(to),
+        })
+        .collect::<Vec<MongoTickerParams>>();
+
+        // Test EodApi client
+        let eod_client = EodApi::new().await;
+        let eod_dfs = eod_client.batch_get_series_all(system_params.clone()).await.unwrap();
+        let mut eod_dfs_clean = Vec::new();
+        for df in eod_dfs.into_iter() {
+            let mut df_clean = df.lazy()
+                .select([
+                    col("date") + lit("T00:00:00+00:00"),
+                    col("open"),
+                    col("high"),
+                    col("low"),
+                    col("close"),
+                    col("volume"),
+                    col("adjusted_close"),
+                ])
+                .collect()
+                .unwrap();
+            df_clean.rename("date", "datetime").unwrap();
+            let df_clean = df_clean.slice(0, df_clean.height() - 1); // remove last row as df's don't align
+            eod_dfs_clean.push(df_clean);
+        }
+
+        // Mongo client
+        let mongo_client = MongoDbClient::new().await;
+        let mut mongo_dfs_clean = Vec::new();
+        let mongo_dfs = mongo_client.run(user_input_params).await.unwrap();
+        for ticker_df in mongo_dfs.into_iter() {
+           mongo_dfs_clean.push(ticker_df.1); 
+        }
+
+        // Check equality of eod and mongo dfs
+        let eod_df = eod_dfs_clean.pop().unwrap();
+        let mongo_df = mongo_dfs_clean.pop().unwrap();
+        assert_eq!(eod_df, mongo_df);
+
+        // Delete mock dbs when done with test
+        let mongo_client = Client::with_uri_str("mongodb://localhost:27017").await.unwrap();
+        mongo_client.database("molly_db_mock").drop(None).await.unwrap();
+        mongo_client.database("molly_db_metadata_mock").drop(None).await.unwrap();
+    }
+}
+
+// let eod_api_token = env::var("API_TOKEN").unwrap();
+// let client_url = env::var("MONGODB_URI").unwrap();
+// let database_name = env::var("MONGODB_NAME_MOCK").unwrap();
+// let database_metadata_name = env::var("MONGODB_METADATA_NAME_MOCK").unwrap();
+
+// println!("eod_api_token: {}", eod_api_token);
+// println!("client_url: {}", client_url);
+// println!("database_name: {}", database_name);
+// println!("database_metadata_name: {}", database_metadata_name);
