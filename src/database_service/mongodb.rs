@@ -450,7 +450,7 @@ mod tests {
     use super::*;
     use chrono::{DateTime, Utc};
     use std::env;
-    use dotenv::dotenv;
+    // use dotenv::dotenv;
 
     #[tokio::test]
     async fn test_run() {
@@ -464,7 +464,6 @@ mod tests {
          */
 
         // Set mock env variables
-        dotenv().ok();
         env::set_var("API_TOKEN", "demo");
         env::set_var("MONGODB_URI", "mongodb://localhost:27017");
         env::set_var("MONGODB_NAME", "molly_db_mock");

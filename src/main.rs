@@ -56,7 +56,6 @@ async fn main() {
 
 
 // documentation
-// write test for reading data
 // optimizations
 // fix cargo audit
 // make json of all metadata objects for backup
