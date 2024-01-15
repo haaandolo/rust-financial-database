@@ -1,9 +1,9 @@
 # Quant Database
 
-### High Level Overview ###
-...insert here
+### High Level Overview
+Go 
 
-### System Standards ###
+### System Standards
 User will input data they want in this standdard (ticker, exchange, collection, source, from, to).
 An example of this can be found below:
 
@@ -38,7 +38,7 @@ belonging to Apple from the equity_spot_1d collection. You can essentially think
 fields within the TimeseriesMetaDataStruct and OhlcvMetaData stuct as the keys that you join on in 
 a regular SQL database.
 
-### How to Add New Datasource to the System ###
+### How to Add New Datasource to the System
 1. Make new file in the data_apis folder i.e., binance.rs
 2. Within that file make functions to get the relevant data from that source
 3. Make sure if it is timeseries data it obeys the standard outlined above i.e., each series rows
