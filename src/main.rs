@@ -47,17 +47,17 @@ async fn main() {
                 "2022-10-10",
                 "2023-10-10",
             ),
-            // ("AAPL", "US",  "equity_spot_live", "eod", "2023-10-10", "2024-01-01"),
+            // ("AAPL", "US", "equity_spot_live", "eod", "2023-10-10", "2024-01-01"),
             // ("BTC-USD", "CC", "crypto_spot_live", "eod", "2023-10-10", "2024-01-01"),
         ])
         .await;
     println!("{:#?}", create_collections);
 }
 
-
 // documentation
 // optimizations
 // fix cargo audit
 // make json of all metadata objects for backup
+// mock database for testing
 
 // Note: still need to figure out intraday api batch limit in get_timestamps_tuple() function
