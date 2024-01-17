@@ -23,4 +23,4 @@ anyhow = "1.0"
 tokio = { version = "1", features = ["full"] }
 polars = { version = "0.36.2", features = ["lazy", "temporal", "describe", "json", "parquet", "dtype-datetime"]}
 # mockall = "0.12.1"
-# dotenv = "0.15.0"
+dotenv = "0.15.0"

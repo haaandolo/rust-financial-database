@@ -29,13 +29,11 @@ impl MongoDbClient {
     pub async fn new() -> Self {
         dotenv().ok();
         let client_url = env::var("MONGODB_URI").expect("Could not parse MongoDB URI from .env");
+        let database_name = env::var("MONGODB_NAME").expect("Could not parse MongoDB name from .env");
+        let database_metadata_name = env::var("MONGODB_METADATA_NAME").expect("Could not parse MongoDB metadata name from .env");
         let mongo_client = Client::with_uri_str(client_url)
             .await
             .expect("Could not create MongoDB Client from DB URI");
-        let database_name =
-            env::var("MONGODB_NAME").expect("Could not parse MongoDB name from .env");
-        let database_metadata_name = env::var("MONGODB_METADATA_NAME")
-            .expect("Could not parse MongoDB metadata name from .env");
         log::info!("Established Client for MongoDB!");
         Self {
             client: mongo_client.clone(),
@@ -463,10 +461,16 @@ mod tests {
          */
 
         // Set mock env variables
-        env::set_var("API_TOKEN", "demo");
-        env::set_var("MONGODB_URI", "mongodb://localhost:27017");
-        env::set_var("MONGODB_NAME", "molly_db_mock");
-        env::set_var("MONGODB_METADATA_NAME", "molly_db_metadata_mock");
+        dotenv().ok();
+        let eod_api_token = env::var("API_TOKEN").unwrap();
+        let client_url = env::var("MONGODB_URI").unwrap();
+        let database_name = env::var("MONGODB_NAME_MOCK").unwrap();
+        let database_metadata_name = env::var("MONGODB_METADATA_NAME_MOCK").unwrap();
+
+        env::set_var("API_TOKEN", eod_api_token);
+        env::set_var("MONGODB_URI", client_url);
+        env::set_var("MONGODB_NAME", database_name);
+        env::set_var("MONGODB_METADATA_NAME", database_metadata_name);
 
         // Set parameters
         let now: DateTime<Utc> = Utc::now();
@@ -530,7 +534,8 @@ mod tests {
 // let database_name = env::var("MONGODB_NAME_MOCK").unwrap();
 // let database_metadata_name = env::var("MONGODB_METADATA_NAME_MOCK").unwrap();
 
-// println!("eod_api_token: {}", eod_api_token);
-// println!("client_url: {}", client_url);
-// println!("database_name: {}", database_name);
-// println!("database_metadata_name: {}", database_metadata_name);
+// env::set_var("API_TOKEN", eod_api_token);
+// env::set_var("MONGODB_URI", client_url);
+// env::set_var("MONGODB_NAME", database_name);
+// env::set_var("MONGODB_METADATA_NAME", database_metadata_name);
+
