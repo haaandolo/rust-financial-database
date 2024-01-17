@@ -528,14 +528,3 @@ mod tests {
         mongo_client.database("molly_db_metadata_mock").drop(None).await.unwrap();
     }
 }
-
-// let eod_api_token = env::var("API_TOKEN").unwrap();
-// let client_url = env::var("MONGODB_URI").unwrap();
-// let database_name = env::var("MONGODB_NAME_MOCK").unwrap();
-// let database_metadata_name = env::var("MONGODB_METADATA_NAME_MOCK").unwrap();
-
-// env::set_var("API_TOKEN", eod_api_token);
-// env::set_var("MONGODB_URI", client_url);
-// env::set_var("MONGODB_NAME", database_name);
-// env::set_var("MONGODB_METADATA_NAME", database_metadata_name);
-
