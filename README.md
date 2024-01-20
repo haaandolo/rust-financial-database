@@ -54,3 +54,9 @@ has a OhlcvMetaData and and TimeseriesMetaDataStruct associated with it.
 the urls by datasource.
 
 ### Note on testing
+
+### Note on Dates for Series (VERIFY ALL THIS IS CORRECT)
+- Data comes in as string object from datasource api in either date or datetime. If it is a date the 
+system converts it to a datetime for consistency.
+- When inserting data the system converts sting date/datetime to UTC datetime then converts to bson datetime
+- When reading, it reads in bson datetime, converts to utc datetime then converts to a nativedatetime.

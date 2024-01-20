@@ -1,5 +1,6 @@
 use anyhow::Result;
 use bson::{doc, Bson, Document};
+use chrono::{DateTime, Utc, NaiveDateTime};
 use dotenv::dotenv;
 use futures::{TryStreamExt, StreamExt};
 use mongodb::{
@@ -323,9 +324,8 @@ impl MongoDbClient {
             }
 
             let datetime: Series = Series::new("datetime", ohlcv_vec.iter().map(|s| {
-                let datetime = s.datetime;
-                let datetime = chrono::DateTime::<chrono::Utc>::from(datetime);
-                datetime.to_rfc3339()
+                let datetime = DateTime::<Utc>::from(s.datetime).to_rfc3339();
+                NaiveDateTime::parse_from_str(&datetime, "%Y-%m-%dT%H:%M:%S%:z").unwrap()
             }).collect::<Vec<_>>());
             let open: Series = Series::new("open", ohlcv_vec.iter().map(|s| s.open).collect::<Vec<_>>());
             let high: Series = Series::new("high", ohlcv_vec.iter().map(|s| s.high).collect::<Vec<_>>());
@@ -335,6 +335,7 @@ impl MongoDbClient {
             let volume: Series = Series::new("volume", ohlcv_vec.iter().map(|s| s.volume).collect::<Vec<_>>());
 
             let df = DataFrame::new(vec![datetime, open, high, low, close, volume, adjusted_close]).unwrap();
+            // df.set_index("datetime").unwrap();
             let ticker_collection_name = format!("{}_{}_{}", ticker.ticker, ticker.source, ticker.series_collection_name);
             dfs.push((ticker_collection_name, df));
         }
