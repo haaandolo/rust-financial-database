@@ -1,4 +1,6 @@
-use molly_db::database_service::mongodb::MongoDbClient;
+// use molly_db::database_service::mongodb::MongoDbClient;
+// use molly_db::database_service::mongodb::MongoDbClient;
+use molly_db::database::database_service::MongoDbClient;
 
 #[tokio::main]
 async fn main() {
