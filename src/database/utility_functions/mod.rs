@@ -7,7 +7,7 @@ use polars::prelude::*;
 use reqwest::Client;
 use std::{collections::HashMap, io::Cursor};
 
-use crate::models::eod_models::MongoTickerParams;
+use crate::database::models::eod_models::MongoTickerParams;
 
 /*------------------------------ DATE UTILITY FUNCTIONS ------------------------------*/
 pub fn string_to_datetime(date: &str) -> bson::DateTime {

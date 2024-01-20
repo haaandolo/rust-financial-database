@@ -6,8 +6,8 @@ use reqwest::Client;
 use serde_json::to_string;
 use std::{collections::HashMap, env};
 
-use crate::models::eod_models::{MongoTickerParams, OhlcvMetaData};
-use crate::utility_functions::{
+use crate::database::models::eod_models::{MongoTickerParams, OhlcvMetaData};
+use crate::database::utility_functions::{
     async_http_request, get_current_date_string, get_current_datetime_bson, get_timestamps_tuple,
 };
 

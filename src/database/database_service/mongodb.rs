@@ -14,10 +14,9 @@ use polars::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::env;
 
-
-use crate::data_apis::EodApi;
-use crate::models::eod_models::{OhlcvMetaData, TimeseriesMetaDataStruct, MongoTickerParams, ReadSeriesFromMongoDb};
-use crate::utility_functions::{get_current_datetime_bson, string_to_datetime, has_business_day_between};
+use crate::database::data_apis::EodApi;
+use crate::database::models::eod_models::{OhlcvMetaData, TimeseriesMetaDataStruct, MongoTickerParams, ReadSeriesFromMongoDb};
+use crate::database::utility_functions::{get_current_datetime_bson, string_to_datetime, has_business_day_between};
 
 pub struct MongoDbClient {
     client: Client,
