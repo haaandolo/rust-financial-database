@@ -1,7 +1,20 @@
-use molly_db::alpha::test;
+use chrono::NaiveDate;
+use molly_db::alpha::utility_functions::{get_data, Alpha};
 
 fn main() {
-    test()
+    env_logger::init();
+    let dfs = get_data().unwrap();
+    let start_date = NaiveDate::from_ymd_opt(2010, 1, 1)
+        .unwrap()
+        .and_hms_opt(0, 0, 0)
+        .unwrap();
+    let end_date = NaiveDate::from_ymd_opt(2023, 12, 31)
+        .unwrap()
+        .and_hms_opt(0, 0, 0)
+        .unwrap();
+
+    let alpha1 = Alpha::new(dfs, start_date, end_date);
+    println!("{:#?}", alpha1.run())
 }
 
 // documentation
@@ -9,9 +22,7 @@ fn main() {
 // fix cargo audit
 // make json of all metadata objects for backup
 // mock database for testing
-
 // Note: still need to figure out intraday api batch limit in get_timestamps_tuple() function
-
 
 // ("AAPL", "US", "equity_spot_1d", "eod", "1970-01-01", "2024-01-01"),
 // ("MSFT", "US", "equity_spot_1d", "eod", "1970-01-01", "2024-01-01"),

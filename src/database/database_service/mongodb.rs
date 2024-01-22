@@ -335,9 +335,8 @@ impl MongoDbClient {
             let volume: Series = Series::new("volume", ohlcv_vec.iter().map(|s| s.volume).collect::<Vec<_>>());
 
             let df = DataFrame::new(vec![datetime, open, high, low, close, volume, adjusted_close]).unwrap();
-            // df.set_index("datetime").unwrap();
-            let ticker_collection_name = format!("{}_{}_{}", ticker.ticker, ticker.source, ticker.series_collection_name);
-            dfs.push((ticker_collection_name, df));
+            // let ticker_collection_name = format!("{}_{}_{}", ticker.ticker, ticker.source, ticker.series_collection_name);
+            dfs.push((ticker.ticker.clone(), df));
         }
 
         Ok(dfs)
